@@ -59,6 +59,21 @@ outputs:
   build_start:
     description: "Build start timestamp"
     value: ${{ steps.initialize.outputs.build_start }}
+  commit_list:
+    description: "Base64 encoded list of commits for SCE"
+    value: ${{ steps.initialize.outputs.commit_list }}
+  sce_commit:
+    description: "SCE commit hash"
+    value: ${{ steps.initialize.outputs.sce_commit }}
+  sce_commit_message:
+    description: "SCE commit message"
+    value: ${{ steps.initialize.outputs.sce_commit_message }}
+  sce_commit_date:
+    description: "SCE commit date"
+    value: ${{ steps.initialize.outputs.sce_commit_date }}
+  sce_vcs_uri:
+    description: "SCE VCS URI"
+    value: ${{ steps.initialize.outputs.sce_vcs_uri }}
 runs:
   using: "composite"
   steps:
@@ -354,6 +369,11 @@ runs:
         echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
         echo "short_version=$SHORT_VERSION" >> $GITHUB_OUTPUT
         echo "build_start=$BUILD_START" >> $GITHUB_OUTPUT
+        echo "commit_list=$COMMITS_BASE64" >> $GITHUB_OUTPUT
+        echo "sce_commit=$COMMIT" >> $GITHUB_OUTPUT
+        echo "sce_commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+        echo "sce_commit_date=$COMMIT_DATE" >> $GITHUB_OUTPUT
+        echo "sce_vcs_uri=$VCS_URI" >> $GITHUB_OUTPUT
         
         # Set environment variables for subsequent steps
         echo "REARM_DO_BUILD=$DO_BUILD" >> $GITHUB_ENV

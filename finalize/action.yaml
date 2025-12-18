@@ -1,0 +1,204 @@
+name: 'Rearm Finalize Release'
+description: 'Submit Release metadata and finalize a release on Rearm - accepts artifact JSON from sbom-sign-scan action'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+inputs:
+  rearm_api_id:
+    description: "Rearm Hub API ID"
+    required: true
+  rearm_api_key:
+    description: "Rearm Hub API KEY"
+    required: true
+  image_full_name:
+    description: "Full name of the Docker image with registry prefix"
+    required: true
+  image_digest:
+    description: "SHA 256 digest of the image artifact"
+    required: false
+  rearm_build_start:
+    description: "Build start time"
+    required: true
+  rearm_short_version:
+    description: "Docker and filesystem safe version from Rearm for this release"
+    required: true
+  rearm_full_version:
+    description: "Version obtained from Rearm for this release"
+    required: true
+  rearm_build_status:
+    description: "Build status - [complete | rejected]"
+    required: true
+  rearm_api_url:
+    description: "Rearm Hub API URL"
+    required: false
+    default: 'https://demo.rearmhq.com'
+  deliverable_type:
+    description: "Type of artifact created by this release [CONTAINER, FILE]"
+    required: false
+    default: 'CONTAINER'
+  commit_list:
+    description: "Base64 encoded list of commits (from initialize action)"
+    required: false
+  sce_commit:
+    description: "SCE commit hash (from initialize action)"
+    required: false
+  sce_commit_message:
+    description: "SCE commit message (from initialize action)"
+    required: false
+  sce_commit_date:
+    description: "SCE commit date (from initialize action)"
+    required: false
+  sce_vcs_uri:
+    description: "SCE VCS URI (defaults to github.com/${{github.repository}})"
+    required: false
+  rearm_component_id:
+    description: "Component UUID for this release if org-wide key is used"
+    required: false
+  finalize_release:
+    description: "Finalize the release after adding it (true/false)"
+    required: false
+    default: 'true'
+  path:
+    description: "Path to the relative to root of the repo (default is '.')"
+    required: false
+    default: .
+  send_sce_data:
+    description: "Sends Source Code entry data along with the release, required for SCE SBOMs"
+    required: false
+    default: 'true'
+  scearts:
+    description: "Source Code Entry artifacts JSON array (output from sbom-sign-scan action)"
+    required: false
+  odelartsjson:
+    description: "Output Deliverable artifacts JSON array (output from sbom-sign-scan action)"
+    required: false
+  purl:
+    description: "Package URL for the deliverable (output from sbom-sign-scan action for CONTAINER type)"
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Instantiate Rearm status
+      shell: bash
+      run: |
+        mkdir -p /tmp/reliza
+        cd ${{ inputs.path }}
+        echo "" > /tmp/reliza/rearm_command
+        echo -n "--lifecycle ${{inputs.rearm_build_status}} " >> /tmp/reliza/rearm_command
+
+    - name: Set sce data
+      shell: bash
+      if: ${{ inputs.send_sce_data == 'true' }}
+      run: |
+        # Use commit_list from initialize action if provided
+        if [ ! -z "${{inputs.commit_list}}" ]; then
+          echo -n "--commits ${{inputs.commit_list}} " >> /tmp/reliza/rearm_command
+        fi
+
+        # Use SCE data from initialize action or fall back to github context
+        sce_commit="${{inputs.sce_commit}}"
+        if [ -z "$sce_commit" ]; then
+          sce_commit="${{github.sha}}"
+        fi
+
+        sce_vcs_uri="${{inputs.sce_vcs_uri}}"
+        if [ -z "$sce_vcs_uri" ]; then
+          sce_vcs_uri="github.com/${{github.repository}}"
+        fi
+
+        echo -n "--commit ${sce_commit} " >> /tmp/reliza/rearm_command
+
+        if [ ! -z "${{inputs.sce_commit_message}}" ]; then
+          echo -n "--commitmessage \"${{inputs.sce_commit_message}}\" " >> /tmp/reliza/rearm_command
+        fi
+
+        if [ ! -z "${{inputs.sce_commit_date}}" ]; then
+          echo -n "--date ${{inputs.sce_commit_date}} " >> /tmp/reliza/rearm_command
+        fi
+
+        echo -n "--vcstype git --vcsuri ${sce_vcs_uri} " >> /tmp/reliza/rearm_command
+
+    - name: Submit metadata to Rearm
+      shell: bash
+      run: |
+        cd ${{ inputs.path }}
+
+        # Use purl from sbom-sign-scan if provided
+        purl="${{inputs.purl}}"
+        echo "deliverable purl=$purl"
+
+        # Add scearts if provided and not empty
+        scearts='${{ inputs.scearts }}'
+        if [[ -n "$scearts" && "$scearts" != "" && "$scearts" != "[]" ]]; then
+          echo -n "--scearts '${scearts}' " >> /tmp/reliza/rearm_command
+        fi
+
+        # Add odelartsjson if provided and not empty
+        odelartsjson='${{ inputs.odelartsjson }}'
+        if [[ -n "$odelartsjson" && "$odelartsjson" != "" && "$odelartsjson" != "[]" ]]; then
+          echo -n "--odelartsjson '${odelartsjson}' " >> /tmp/reliza/rearm_command
+        fi
+
+        echo -n "-b ${{github.ref_name}} -k ${{ inputs.rearm_api_key }} \
+          -i ${{ inputs.rearm_api_id }} -u ${{ inputs.rearm_api_url }} \
+          -v \"${{ inputs.rearm_full_version }}\" " >> /tmp/reliza/rearm_command
+        echo -n "--odelid ${{inputs.image_full_name}} " >> /tmp/reliza/rearm_command
+        echo -n "--odelbuildid github${{github.action}}${{github.sha}} " >> /tmp/reliza/rearm_command
+        echo -n "--odelbuilduri https://github.com/${{github.repository}}/actions/runs/${{github.run_id}} " >> /tmp/reliza/rearm_command
+        if [[ -n "$purl" ]]; then
+          echo -n "--odelidentifiers \"PURL:${purl}\" " >> /tmp/reliza/rearm_command
+        fi
+        echo -n '--odelcimeta "GitHub Actions" ' >> /tmp/reliza/rearm_command
+        echo -n "--odeltype ${{inputs.deliverable_type}} " >> /tmp/reliza/rearm_command
+
+        if [[ "${{inputs.image_digest}}" != "" ]]
+        then
+          echo -n "--odeldigests ${{inputs.image_digest}} " >> /tmp/reliza/rearm_command
+        fi
+        if [ ! -z "${{inputs.rearm_component_id}}" ]
+        then
+          echo -n "--component ${{inputs.rearm_component_id}} " >> /tmp/reliza/rearm_command
+        fi
+        echo -n "--datestart ${{inputs.rearm_build_start}} " >> /tmp/reliza/rearm_command
+        echo -n "--dateend $(date -Iseconds) " >> /tmp/reliza/rearm_command
+        # debug
+        cat /tmp/reliza/rearm_command
+        # send data
+        echo rearm addrelease $(cat /tmp/reliza/rearm_command) > /tmp/reliza/rlz_cmd_exec
+        # Run rearm addrelease and capture output
+
+        if rearm_output=$(eval $(cat /tmp/reliza/rlz_cmd_exec) 2>&1); then
+          echo "Success: $rearm_output"
+        else
+          exit_code=$?
+          echo "Error (exit code $exit_code): $rearm_output"
+          exit $exit_code
+        fi
+
+        # Extract UUID from JSON output using jq
+        release_uuid=$(echo "$rearm_output" | jq -r '.data.addReleaseProgrammatic.uuid // empty')
+        echo "Extracted release UUID: $release_uuid"
+
+        # Conditionally finalize release
+        if [[ "${{ inputs.finalize_release }}" == 'true' && -n "$release_uuid" ]]; then
+          echo "Finalizing release with UUID: $release_uuid"
+          rearm releasefinalizer --releaseid $release_uuid -u ${{ inputs.rearm_api_url }} -i ${{ inputs.rearm_api_id }} -k ${{ inputs.rearm_api_key }}
+        else
+          echo "Skipping release finalization."
+        fi
+        echo "completed sending release metadata"
+
+    - name: Fail build if rearm status is rejected
+      shell: bash
+      run: |
+        echo "checking build status..."
+        cd ${{ inputs.path }}
+        if [[ "${{inputs.rearm_build_status}}" == "REJECTED" ]]
+        then
+          echo "Failing build since Rearm build Lifecycle is rejected"
+          exit 1
+        fi
+post:
+  shell: bash
+  run: |
+    rm -rf /tmp/reliza/*

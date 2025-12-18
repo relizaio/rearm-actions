@@ -74,6 +74,9 @@ outputs:
   odelartsjson:
     description: "Output Deliverable artifacts JSON array"
     value: ${{ steps.generate-artifacts.outputs.odelartsjson }}
+  purl:
+    description: "Package URL for the deliverable (only for CONTAINER type)"
+    value: ${{ steps.generate-artifacts.outputs.purl }}
 runs:
   using: "composite"
   steps:
@@ -194,13 +197,18 @@ runs:
           fi
         }
 
-        # establish purl
-        url4purl=oci://${{inputs.image_full_name}}:${{inputs.rearm_short_version}}
-        docker pull registry.relizahub.com/library/url2purl-cli:25.07.0@sha256:05f849cfedbc31c6c8d11819e42efb4eb5e95198696978ca1ad84b010d52e952
-        purl=$(docker run --rm registry.relizahub.com/library/url2purl-cli:25.07.0@sha256:05f849cfedbc31c6c8d11819e42efb4eb5e95198696978ca1ad84b010d52e952 $url4purl)
-        echo "deliverable purl=$purl"
-
         # Initialize output variables
+        purl=""
+
+        # Establish purl for CONTAINER type
+        if [[ "${{inputs.deliverable_type}}" == 'CONTAINER' ]]; then
+          url4purl=oci://${{inputs.image_full_name}}:${{inputs.rearm_short_version}}
+          docker pull registry.relizahub.com/library/url2purl-cli:25.07.0@sha256:05f849cfedbc31c6c8d11819e42efb4eb5e95198696978ca1ad84b010d52e952
+          purl=$(docker run --rm registry.relizahub.com/library/url2purl-cli:25.07.0@sha256:05f849cfedbc31c6c8d11819e42efb4eb5e95198696978ca1ad84b010d52e952 $url4purl)
+          echo "deliverable purl=$purl"
+        fi
+
+        # Initialize artifact output variables
         scearts=""
         odelarts=""
 
@@ -261,9 +269,11 @@ runs:
           odelarts+=']'
         fi
 
-        # Output the generated artifacts JSON
+        # Output the generated artifacts JSON and purl
         echo "scearts=${scearts}" >> $GITHUB_OUTPUT
         echo "odelartsjson=${odelarts}" >> $GITHUB_OUTPUT
+        echo "purl=${purl}" >> $GITHUB_OUTPUT
 
         echo "Generated scearts: ${scearts}"
         echo "Generated odelartsjson: ${odelarts}"
+        echo "Generated purl: ${purl}"
