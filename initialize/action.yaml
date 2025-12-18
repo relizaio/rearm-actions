@@ -1,0 +1,373 @@
+name: 'ReARM Initialize Action'
+description: 'GitHub Action to initialize ReARM flow'
+branding:
+  icon: 'anchor'
+  color: 'green'
+inputs:
+  rearm_api_key:
+    description: "ReARM API Key"
+    required: true
+  rearm_api_id:
+    description: "ReARM API Key ID"
+    required: true
+  rearm_api_url:
+    description: "ReARM API URL"
+    required: false
+    default: "https://demo.rearmhq.com"
+  repo_path:
+    description: "Repository path (relative to workspace root)"
+    required: false
+    default: "."
+  branch:
+    description: "Branch name (defaults to current branch)"
+    required: false
+  version:
+    description: "Version to use (if not provided, will be obtained from ReARM)"
+    required: false
+  create_component:
+    description: "Create component if it doesn't exist"
+    required: false
+    default: "false"
+  create_component_version_schema:
+    description: "Version schema for new component"
+    required: false
+    default: "semver"
+  create_component_branch_version_schema:
+    description: "Branch version schema for new component"
+    required: false
+    default: "semver"
+  allow_rebuild:
+    description: "Allow rebuild of existing version"
+    required: false
+    default: "false"
+  component:
+    description: "Component UUID (optional)"
+    required: false
+outputs:
+  do_build:
+    description: "Whether a build is needed"
+    value: ${{ steps.initialize.outputs.do_build }}
+  last_commit:
+    description: "Last commit from previous release"
+    value: ${{ steps.initialize.outputs.last_commit }}
+  full_version:
+    description: "Full version string"
+    value: ${{ steps.initialize.outputs.full_version }}
+  short_version:
+    description: "Docker-tag-safe version string"
+    value: ${{ steps.initialize.outputs.short_version }}
+  build_start:
+    description: "Build start timestamp"
+    value: ${{ steps.initialize.outputs.build_start }}
+runs:
+  using: "composite"
+  steps:
+    - id: initialize
+      name: Initialize ReARM Release
+      shell: bash
+      env:
+        REARM_API_KEY: ${{ inputs.rearm_api_key }}
+        rearm_api_id: ${{ inputs.rearm_api_id }}
+        REARM_API_URL: ${{ inputs.rearm_api_url }}
+        REPO_PATH: ${{ inputs.repo_path }}
+        INPUT_BRANCH: ${{ inputs.branch }}
+        INPUT_VERSION: ${{ inputs.version }}
+        CREATE_COMPONENT: ${{ inputs.create_component }}
+        CREATE_COMPONENT_VERSION_SCHEMA: ${{ inputs.create_component_version_schema }}
+        CREATE_COMPONENT_BRANCH_VERSION_SCHEMA: ${{ inputs.create_component_branch_version_schema }}
+        ALLOW_REBUILD: ${{ inputs.allow_rebuild }}
+        COMPONENT: ${{ inputs.component }}
+        VCS_URI: ${{ github.server_url }}/${{ github.repository }}
+        COMMIT: ${{ github.sha }}
+        GITHUB_REF: ${{ github.ref }}
+      run: |
+        set -e
+        
+        # Set BUILD_START for use in finalize task
+        BUILD_START=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+        # Determine branch
+        if [ -n "$INPUT_BRANCH" ]; then
+          BRANCH="$INPUT_BRANCH"
+        else
+          BRANCH="$GITHUB_REF"
+        fi
+        
+        echo "Repository URI: $VCS_URI"
+        echo "Repository Path: $REPO_PATH"
+        echo "Branch: $BRANCH"
+        echo "Commit: $COMMIT"
+        
+        if [ -n "$INPUT_VERSION" ]; then
+          echo "Version (from input): $INPUT_VERSION"
+        else
+          echo "Version will be obtained from ReARM"
+        fi
+        
+        # Function to get latest release and check if build is needed
+        get_latest_release() {
+          local upto_version="$1"
+          local get_latest_args=(
+            "getlatestrelease"
+            "-k" "$REARM_API_KEY"
+            "-i" "$rearm_api_id"
+            "-u" "$REARM_API_URL"
+            "--vcsuri" "$VCS_URI"
+            "--repo-path" "$REPO_PATH"
+            "--branch" "$BRANCH"
+          )
+          
+          if [ -n "$upto_version" ]; then
+            get_latest_args+=("--uptoversion" "$upto_version")
+          fi
+          
+          if [ -n "$COMPONENT" ]; then
+            get_latest_args+=("--component" "$COMPONENT")
+          fi
+          
+          local latest_output
+          latest_output=$(rearm "${get_latest_args[@]}" 2>/dev/null) || true
+          
+          LAST_COMMIT=$(echo "$latest_output" | jq -r '.sourceCodeEntryDetails.commit // empty' 2>/dev/null || echo "")
+          echo "Last Commit: $LAST_COMMIT"
+          
+          DO_BUILD="false"
+          if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
+            # Check if lastCommit exists locally (may not in shallow checkout)
+            if git cat-file -t "$LAST_COMMIT" >/dev/null 2>&1; then
+              # Check for diff
+              local diff_output
+              diff_output=$(git diff "${LAST_COMMIT}..${COMMIT}" -- ./ 2>/dev/null) || diff_output=""
+              if [ -n "$diff_output" ]; then
+                DO_BUILD="true"
+              fi
+            else
+              echo "Last commit $LAST_COMMIT not available locally (shallow checkout), assuming build is needed."
+              echo "Make sure to use fetch-depth: 0 in your checkout step to avoid shallow clone."
+              DO_BUILD="true"
+            fi
+          else
+            DO_BUILD="true"
+          fi
+        }
+        
+        # Step 1: Get latest release and check if build is needed
+        echo "Checking for changes since last release..."
+        DO_BUILD="false"
+        LAST_COMMIT=""
+        
+        get_latest_release "$INPUT_VERSION" || {
+          echo "No previous release found, build is needed"
+          DO_BUILD="true"
+        }
+        
+        echo "DO_BUILD: $DO_BUILD"
+        
+        # Step 2: If build is needed, create pending release
+        FULL_VERSION=""
+        SHORT_VERSION=""
+        
+        if [ "$DO_BUILD" = "true" ]; then
+          echo "Initializing pending release..."
+          
+          # Get commit message and date
+          COMMIT_MESSAGE=$(git log -1 --pretty=%s 2>/dev/null || echo "")
+          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad 2>/dev/null || echo "")
+          
+          # Get commits since last release for getversion command
+          COMMITS_BASE64=""
+          if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
+            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT}" --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" -- ./ 2>/dev/null || echo "")
+          else
+            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" 2>/dev/null || echo "")
+          fi
+          
+          if [ -n "$COMMITS_OUTPUT" ]; then
+            COMMITS_BASE64=$(echo "$COMMITS_OUTPUT" | base64 -w 0 2>/dev/null || echo "$COMMITS_OUTPUT" | base64 2>/dev/null)
+          fi
+          
+          if [ -n "$INPUT_VERSION" ]; then
+            # Version provided - use addrelease with provided version
+            add_release_args=(
+              "addrelease"
+              "-k" "$REARM_API_KEY"
+              "-i" "$rearm_api_id"
+              "-u" "$REARM_API_URL"
+              "--commit" "$COMMIT"
+              "--vcstype" "git"
+              "--vcsuri" "$VCS_URI"
+              "--repo-path" "$REPO_PATH"
+              "--branch" "$BRANCH"
+              "--lifecycle" "PENDING"
+              "--version" "$INPUT_VERSION"
+            )
+            
+            if [ -n "$COMMIT_MESSAGE" ]; then
+              add_release_args+=("--commitmessage" "$COMMIT_MESSAGE")
+            fi
+            
+            if [ -n "$COMMIT_DATE" ]; then
+              add_release_args+=("--date" "$COMMIT_DATE")
+            fi
+            
+            if [ -n "$COMMITS_BASE64" ]; then
+              add_release_args+=("--commits" "$COMMITS_BASE64")
+            fi
+            
+            if [ "$CREATE_COMPONENT" = "true" ]; then
+              add_release_args+=("--createcomponent" "true")
+              add_release_args+=("--createcomponent-version-schema" "$CREATE_COMPONENT_VERSION_SCHEMA")
+              add_release_args+=("--createcomponent-branch-version-schema" "$CREATE_COMPONENT_BRANCH_VERSION_SCHEMA")
+            fi
+            
+            if [ "$ALLOW_REBUILD" = "true" ]; then
+              add_release_args+=("--rebuild" "true")
+            fi
+            
+            if [ -n "$COMPONENT" ]; then
+              add_release_args+=("--component" "$COMPONENT")
+            fi
+            
+            rearm "${add_release_args[@]}"
+            
+            FULL_VERSION="$INPUT_VERSION"
+            SHORT_VERSION="$INPUT_VERSION"
+            echo "Pending release initialized successfully with provided version"
+          else
+            # No version provided - use getversion to obtain version and create pending release
+            echo "Getting version from ReARM..."
+            
+            get_version_args=(
+              "getversion"
+              "-k" "$REARM_API_KEY"
+              "-i" "$rearm_api_id"
+              "-u" "$REARM_API_URL"
+              "-b" "$BRANCH"
+              "--commit" "$COMMIT"
+              "--vcstype" "git"
+              "--vcsuri" "$VCS_URI"
+              "--repo-path" "$REPO_PATH"
+            )
+            
+            if [ -n "$COMMIT_MESSAGE" ]; then
+              get_version_args+=("--commitmessage" "$COMMIT_MESSAGE")
+            fi
+            
+            if [ -n "$COMMIT_DATE" ]; then
+              get_version_args+=("--date" "$COMMIT_DATE")
+            fi
+            
+            if [ -n "$COMMITS_BASE64" ]; then
+              get_version_args+=("--commits" "$COMMITS_BASE64")
+            fi
+            
+            if [ "$CREATE_COMPONENT" = "true" ]; then
+              get_version_args+=("--createcomponent" "true")
+              get_version_args+=("--createcomponent-version-schema" "$CREATE_COMPONENT_VERSION_SCHEMA")
+              get_version_args+=("--createcomponent-branch-version-schema" "$CREATE_COMPONENT_BRANCH_VERSION_SCHEMA")
+            fi
+            
+            if [ -n "$COMPONENT" ]; then
+              get_version_args+=("--component" "$COMPONENT")
+            fi
+            
+            GET_VERSION_OUTPUT=$(rearm "${get_version_args[@]}" 2>&1)
+            echo "ReARM getversion output: $GET_VERSION_OUTPUT"
+            
+            # Parse version from JSON response
+            FULL_VERSION=$(echo "$GET_VERSION_OUTPUT" | jq -r '.version // empty' 2>/dev/null || echo "")
+            SHORT_VERSION=$(echo "$GET_VERSION_OUTPUT" | jq -r '.dockerTagSafeVersion // empty' 2>/dev/null || echo "$FULL_VERSION")
+            RELEASE_ALREADY_EXISTS=$(echo "$GET_VERSION_OUTPUT" | jq -r '.releaseAlreadyExists // false' 2>/dev/null || echo "false")
+            
+            echo "Got version from ReARM: $FULL_VERSION"
+            
+            # If release already exists, re-check with the obtained version
+            if [ "$RELEASE_ALREADY_EXISTS" = "true" ]; then
+              echo "Release already exists, re-checking latest release with obtained version..."
+              get_latest_release "$FULL_VERSION" || true
+              echo "Updated DO_BUILD: $DO_BUILD"
+            fi
+            
+            echo "Pending release initialized successfully via getversion"
+          fi
+        else
+          echo "No changes detected, skipping build"
+        fi
+        
+        # Step 3: Sync branches
+        echo "Synchronizing branches with ReARM..."
+        SKIP_BRANCH_SYNC="false"
+        LIVE_BRANCHES=""
+        
+        GIT_BRANCHES=$(git branch -r --format='%(refname)' 2>/dev/null || echo "")
+        
+        if [ -z "$GIT_BRANCHES" ]; then
+          echo "Warning: No branches found. Skipping branch sync."
+          echo "To enable branch sync, use fetch-depth: 0 in your checkout step."
+          SKIP_BRANCH_SYNC="true"
+        else
+          # Filter out detached commit refs (40-char hex hashes)
+          VALID_BRANCHES=""
+          while IFS= read -r line; do
+            branch_name="${line#refs/remotes/origin/}"
+            if ! [[ "$branch_name" =~ ^[0-9a-f]{40}$ ]]; then
+              if [ -n "$VALID_BRANCHES" ]; then
+                VALID_BRANCHES="$VALID_BRANCHES"$'\n'"$line"
+              else
+                VALID_BRANCHES="$line"
+              fi
+            fi
+          done <<< "$GIT_BRANCHES"
+          
+          if [ -z "$VALID_BRANCHES" ]; then
+            echo "Warning: Only detached commit refs found (shallow/detached checkout). Skipping branch sync."
+            echo "To enable branch sync, use fetch-depth: 0 in your checkout step."
+            SKIP_BRANCH_SYNC="true"
+          else
+            LIVE_BRANCHES=$(echo "$VALID_BRANCHES" | base64 -w 0 2>/dev/null || echo "$VALID_BRANCHES" | base64 2>/dev/null)
+          fi
+        fi
+        
+        if [ "$SKIP_BRANCH_SYNC" = "false" ]; then
+          sync_branches_args=(
+            "syncbranches"
+            "-k" "$REARM_API_KEY"
+            "-i" "$rearm_api_id"
+            "-u" "$REARM_API_URL"
+            "--vcsuri" "$VCS_URI"
+            "--repo-path" "$REPO_PATH"
+            "--livebranches" "$LIVE_BRANCHES"
+          )
+          
+          if [ -n "$COMPONENT" ]; then
+            sync_branches_args+=("--component" "$COMPONENT")
+          fi
+          
+          rearm "${sync_branches_args[@]}"
+          
+          echo "Branches synchronized successfully"
+        fi
+        
+        # Set output variables
+        echo "do_build=$DO_BUILD" >> $GITHUB_OUTPUT
+        echo "last_commit=$LAST_COMMIT" >> $GITHUB_OUTPUT
+        echo "full_version=$FULL_VERSION" >> $GITHUB_OUTPUT
+        echo "short_version=$SHORT_VERSION" >> $GITHUB_OUTPUT
+        echo "build_start=$BUILD_START" >> $GITHUB_OUTPUT
+        
+        # Set environment variables for subsequent steps
+        echo "REARM_DO_BUILD=$DO_BUILD" >> $GITHUB_ENV
+        echo "REARM_LAST_COMMIT=$LAST_COMMIT" >> $GITHUB_ENV
+        echo "REARM_FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+        echo "REARM_SHORT_VERSION=$SHORT_VERSION" >> $GITHUB_ENV
+        echo "REARM_BUILD_START=$BUILD_START" >> $GITHUB_ENV
+        echo "REARM_BUILD_LIFECYCLE=REJECTED" >> $GITHUB_ENV
+        
+        echo "Full Version: $FULL_VERSION"
+        echo "Short Version: $SHORT_VERSION"
+        
+        if [ "$DO_BUILD" = "true" ]; then
+          echo "Release initialized"
+        else
+          echo "No build needed"
+        fi
