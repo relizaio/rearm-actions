@@ -1,6 +1,6 @@
-# Rearm SBOM Generator Action
+# ReARM SBOM Generator Action
 
-GitHub Action that generates SBOMs, performs signing, and runs CodeQL analysis. Outputs artifact JSON for use with the Rearm finalize action.
+GitHub Action that generates SBOMs, performs signing, and runs CodeQL analysis. Outputs artifact JSON for use with the ReARM finalize action.
 
 This action performs SBOM generation and signing, and runs CodeQL analysis. It outputs the generated artifact JSON and PURL for use with the [finalize](../finalize) action.
 
@@ -20,8 +20,8 @@ This action performs SBOM generation and signing, and runs CodeQL analysis. It o
 |-------|-------------|
 | `image_full_name` | Full name of the Docker image with registry prefix |
 | `image_digest` | SHA 256 digest of the image artifact |
-| `rearm_short_version` | Docker and filesystem safe version from Rearm for this release |
-| `rearm_full_version` | Version obtained from Rearm for this release |
+| `rearm_short_version` | Docker and filesystem safe version from ReARM for this release |
+| `rearm_full_version` | Version obtained from ReARM for this release |
 
 ### Optional
 

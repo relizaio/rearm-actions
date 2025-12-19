@@ -24,7 +24,7 @@ GitHub Action to initialize ReARM release flow. This action checks for changes s
 | `rearm_api_key` | ReARM API Key | Yes | - |
 | `rearm_api_id` | ReARM API Key ID | Yes | - |
 | `rearm_api_url` | ReARM API URL | No | `https://demo.rearmhq.com` |
-| `repo_path` | Repository path (relative to workspace root) | No | `.` |
+| `repo_path` | Repository path relative to workspace root | No | `.` |
 | `branch` | Branch name (defaults to current branch) | No | `${{ github.ref }}` |
 | `version` | Version to use (if not provided, obtained from ReARM) | No | - |
 | `component` | Component UUID | No | - |

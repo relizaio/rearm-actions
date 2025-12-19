@@ -1,14 +1,14 @@
-name: 'Rearm Finalize Release'
-description: 'Submit Release metadata and finalize a release on Rearm - accepts artifact JSON from sbom-sign-scan action'
+name: 'ReARM Finalize Release'
+description: 'Submit Release metadata and finalize a release on ReARM - accepts artifact JSON from sbom-sign-scan action'
 branding:
   icon: 'check-circle'
   color: 'green'
 inputs:
   rearm_api_id:
-    description: "ReARM API ID"
+    description: "ReARM API Key ID"
     required: true
   rearm_api_key:
-    description: "ReARM API KEY"
+    description: "ReARM API Key"
     required: true
   image_full_name:
     description: "Full name of the Docker image with registry prefix"
@@ -61,7 +61,7 @@ inputs:
   repo_path:
     description: "Repository path relative to workspace root"
     required: false
-    default: .
+    default: "."
   send_sce_data:
     description: "Sends Source Code entry data along with the release, required for SCE SBOMs"
     required: false

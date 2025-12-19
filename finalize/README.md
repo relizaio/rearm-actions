@@ -1,6 +1,6 @@
-# Rearm Finalize Action
+# ReARM Finalize Action
 
-GitHub Action to submit release metadata and finalize a release on Rearm. This action accepts artifact JSON from the sbom-sign-scan action and SCE data from the initialize action.
+GitHub Action to submit release metadata and finalize a release on ReARM. This action accepts artifact JSON from the sbom-sign-scan action and SCE data from the initialize action.
 
 ## Features
 
@@ -22,8 +22,8 @@ GitHub Action to submit release metadata and finalize a release on Rearm. This a
 
 | Input | Description |
 |-------|-------------|
-| `rearm_api_id` | ReARM API ID |
-| `rearm_api_key` | ReARM API KEY |
+| `rearm_api_id` | ReARM API Key ID |
+| `rearm_api_key` | ReARM API Key |
 | `image_full_name` | Full name of the Docker image with registry prefix |
 | `rearm_build_start` | Build start time (from initialize action) |
 | `rearm_short_version` | Docker and filesystem safe version from ReARM |
