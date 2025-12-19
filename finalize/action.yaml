@@ -183,9 +183,6 @@ runs:
         if [[ "${{ inputs.finalize_release }}" == 'true' && -n "$release_uuid" ]]; then
           echo "Finalizing release with UUID: $release_uuid"
           finalizer_cmd="rearm releasefinalizer --releaseid $release_uuid -u ${{ inputs.rearm_api_url }} -i ${{ inputs.rearm_api_id }} -k ${{ inputs.rearm_api_key }}"
-          if [ ! -z "${{inputs.component}}" ]; then
-            finalizer_cmd="$finalizer_cmd --component ${{inputs.component}}"
-          fi
           eval $finalizer_cmd
         else
           echo "Skipping release finalization."
