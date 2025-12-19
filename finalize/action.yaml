@@ -5,10 +5,10 @@ branding:
   color: 'green'
 inputs:
   rearm_api_id:
-    description: "Rearm Hub API ID"
+    description: "ReARM API ID"
     required: true
   rearm_api_key:
-    description: "Rearm Hub API KEY"
+    description: "ReARM API KEY"
     required: true
   image_full_name:
     description: "Full name of the Docker image with registry prefix"
@@ -20,16 +20,16 @@ inputs:
     description: "Build start time"
     required: true
   rearm_short_version:
-    description: "Docker and filesystem safe version from Rearm for this release"
+    description: "Docker and filesystem safe version from ReARM for this release"
     required: true
   rearm_full_version:
-    description: "Version obtained from Rearm for this release"
+    description: "Version obtained from ReARM for this release"
     required: true
-  rearm_build_status:
-    description: "Build status - [complete | rejected]"
+  rearm_build_lifecycle:
+    description: "Build lifecycle - [DRAFT | ASSEMBLED | REJECTED]"
     required: true
   rearm_api_url:
-    description: "Rearm Hub API URL"
+    description: "ReARM API URL"
     required: false
     default: 'https://demo.rearmhq.com'
   deliverable_type:
@@ -84,7 +84,7 @@ runs:
         mkdir -p /tmp/reliza
         cd ${{ inputs.path }}
         echo "" > /tmp/reliza/rearm_command
-        echo -n "--lifecycle ${{inputs.rearm_build_status}} " >> /tmp/reliza/rearm_command
+        echo -n "--lifecycle ${{inputs.rearm_build_lifecycle}} " >> /tmp/reliza/rearm_command
 
     - name: Set sce data
       shell: bash
@@ -193,7 +193,7 @@ runs:
       run: |
         echo "checking build status..."
         cd ${{ inputs.path }}
-        if [[ "${{inputs.rearm_build_status}}" == "REJECTED" ]]
+        if [[ "${{inputs.rearm_build_lifecycle}}" == "REJECTED" ]]
         then
           echo "Failing build since Rearm build Lifecycle is rejected"
           exit 1

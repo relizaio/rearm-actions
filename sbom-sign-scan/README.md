@@ -71,7 +71,7 @@ This action performs SBOM generation and signing, and runs CodeQL analysis. It o
     rearm_build_start: ${{ steps.init.outputs.build_start }}
     rearm_short_version: ${{ steps.init.outputs.short_version }}
     rearm_full_version: ${{ steps.init.outputs.full_version }}
-    rearm_build_status: 'COMPLETE'
+    rearm_build_lifecycle: 'ASSEMBLED'
     scearts: ${{ steps.sbom.outputs.scearts }}
     odelartsjson: ${{ steps.sbom.outputs.odelartsjson }}
     purl: ${{ steps.sbom.outputs.purl }}

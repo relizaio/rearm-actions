@@ -179,6 +179,6 @@ jobs:
 ## Notes
 
 - Use `fetch-depth: 0` in your checkout step to ensure full git history is available
-- The action sets `REARM_BUILD_LIFECYCLE=REJECTED` initially - update this to `COMPLETE` before calling the finalize action on success
+- The action sets `REARM_BUILD_LIFECYCLE=REJECTED` initially - update this to `DRAFT` or `ASSEMBLED` before calling the finalize action on success
 - If no previous release exists, the action assumes a build is needed
 - Pass the SCE outputs (`commit_list`, `sce_commit`, `sce_commit_message`, `sce_commit_date`, `sce_vcs_uri`) to the finalize action

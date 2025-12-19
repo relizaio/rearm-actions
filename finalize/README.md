@@ -4,7 +4,7 @@ GitHub Action to submit release metadata and finalize a release on Rearm. This a
 
 ## Features
 
-- Submits release metadata to Rearm using `rearm addrelease`
+- Submits release metadata to ReARM using `rearm addrelease`
 - Optionally finalizes the release using `rearm releasefinalizer`
 - Accepts SBOM artifacts from sbom-sign-scan action
 - Accepts SCE (Source Code Entry) data from initialize action
@@ -22,19 +22,19 @@ GitHub Action to submit release metadata and finalize a release on Rearm. This a
 
 | Input | Description |
 |-------|-------------|
-| `rearm_api_id` | Rearm Hub API ID |
-| `rearm_api_key` | Rearm Hub API KEY |
+| `rearm_api_id` | ReARM API ID |
+| `rearm_api_key` | ReARM API KEY |
 | `image_full_name` | Full name of the Docker image with registry prefix |
 | `rearm_build_start` | Build start time (from initialize action) |
-| `rearm_short_version` | Docker and filesystem safe version from Rearm |
-| `rearm_full_version` | Version obtained from Rearm for this release |
-| `rearm_build_status` | Build status - `COMPLETE` or `REJECTED` |
+| `rearm_short_version` | Docker and filesystem safe version from ReARM |
+| `rearm_full_version` | Version obtained from ReARM for this release |
+| `rearm_build_lifecycle` | Build lifecycle - `DRAFT`, `ASSEMBLED` or `REJECTED` |
 
 ### Optional
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| `rearm_api_url` | `https://demo.rearmhq.com` | Rearm Hub API URL |
+| `rearm_api_url` | `https://demo.rearmhq.com` | ReARM API URL |
 | `image_digest` | | SHA 256 digest of the image artifact |
 | `deliverable_type` | `CONTAINER` | Type of artifact [CONTAINER, FILE] |
 | `commit_list` | | Base64 encoded list of commits (from initialize action) |
@@ -113,7 +113,7 @@ jobs:
           rearm_build_start: ${{ steps.init.outputs.build_start }}
           rearm_short_version: ${{ steps.init.outputs.short_version }}
           rearm_full_version: ${{ steps.init.outputs.full_version }}
-          rearm_build_status: 'COMPLETE'
+          rearm_build_lifecycle: 'ASSEMBLED'
           commit_list: ${{ steps.init.outputs.commit_list }}
           sce_commit: ${{ steps.init.outputs.sce_commit }}
           sce_commit_message: ${{ steps.init.outputs.sce_commit_message }}
@@ -137,7 +137,7 @@ jobs:
           rearm_build_start: ${{ steps.init.outputs.build_start }}
           rearm_short_version: ${{ steps.init.outputs.short_version }}
           rearm_full_version: ${{ steps.init.outputs.full_version }}
-          rearm_build_status: 'COMPLETE'
+          rearm_build_lifecycle: 'ASSEMBLED'
           commit_list: ${{ steps.init.outputs.commit_list }}
           sce_commit: ${{ steps.init.outputs.sce_commit }}
 ```
@@ -155,7 +155,7 @@ jobs:
           rearm_build_start: ${{ steps.init.outputs.build_start }}
           rearm_short_version: ${{ steps.init.outputs.short_version }}
           rearm_full_version: ${{ steps.init.outputs.full_version }}
-          rearm_build_status: 'COMPLETE'
+          rearm_build_lifecycle: 'ASSEMBLED'
 ```
 
 ### Skip Finalization (Add Release Only)
@@ -170,7 +170,7 @@ jobs:
           rearm_build_start: ${{ steps.init.outputs.build_start }}
           rearm_short_version: ${{ steps.init.outputs.short_version }}
           rearm_full_version: ${{ steps.init.outputs.full_version }}
-          rearm_build_status: 'COMPLETE'
+          rearm_build_lifecycle: 'ASSEMBLED'
           finalize_release: 'false'
 ```
 
@@ -186,11 +186,11 @@ jobs:
 
 3. **Finalize Release**: If `finalize_release` is true and the release was created successfully, calls `rearm releasefinalizer` to finalize the release.
 
-4. **Status Check**: Fails the build if `rearm_build_status` is `REJECTED`.
+4. **Lifecycle Check**: Fails the build if `rearm_build_lifecycle` is `REJECTED`.
 
 ## Notes
 
 - Empty artifact JSON arrays are handled gracefully - they won't be passed to the rearm command
 - The PURL is only added to deliverable identifiers if provided (typically for CONTAINER type)
-- Set `rearm_build_status` to `REJECTED` to mark a failed build
+- Set `rearm_build_lifecycle` to `REJECTED` to mark a failed build
 - The action cleans up temporary files in `/tmp/reliza/` after execution

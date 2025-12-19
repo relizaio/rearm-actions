@@ -77,7 +77,7 @@ jobs:
           rearm_build_start: ${{ steps.init.outputs.build_start }}
           rearm_short_version: ${{ steps.init.outputs.short_version }}
           rearm_full_version: ${{ steps.init.outputs.full_version }}
-          rearm_build_status: 'COMPLETE'
+          rearm_build_lifecycle: 'ASSEMBLED'
           commit_list: ${{ steps.init.outputs.commit_list }}
           sce_commit: ${{ steps.init.outputs.sce_commit }}
           sce_commit_message: ${{ steps.init.outputs.sce_commit_message }}
@@ -141,7 +141,7 @@ Submits release metadata to ReARM and optionally finalizes the release.
 **Key inputs:**
 - SCE data from initialize action
 - Artifact JSON from sbom-sign-scan action
-- Build status (`COMPLETE` or `REJECTED`)
+- Build lifecycle (`DRAFT`, `ASSEMBLED` or `REJECTED`)
 
 ## Minimal Example (Without SBOM)
 
@@ -169,7 +169,6 @@ Submits release metadata to ReARM and optionally finalizes the release.
     rearm_build_start: ${{ steps.init.outputs.build_start }}
     rearm_short_version: ${{ steps.init.outputs.short_version }}
     rearm_full_version: ${{ steps.init.outputs.full_version }}
-    rearm_build_status: 'COMPLETE'
+    rearm_build_lifecycle: 'ASSEMBLED'
     commit_list: ${{ steps.init.outputs.commit_list }}
     sce_commit: ${{ steps.init.outputs.sce_commit }}
-```
