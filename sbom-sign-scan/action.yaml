@@ -176,7 +176,7 @@ runs:
 
             curl --location "${{ inputs.securesbom_host }}/api/v1/keys/public?key_id=${{ inputs.securesbom_pub_key_id }}&format=pem" \
               --header "x-api-key: ${{ inputs.securesbom_api_key }}" > "./${prefix}-securesbom-public-key.pem"
-            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./''"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"${{ inputs.securesbom_pub_key_id }}"}]}'
+            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"${{ inputs.securesbom_pub_key_id }}"}]}'
             has_artifacts=true
           fi
 
@@ -184,9 +184,9 @@ runs:
           if [[ "${{ inputs.enable_public_cosign_sigstore }}" == 'true' ]]; then
             cosign sign-blob -y --output-signature "./${prefix}-cosign.sig" --output-certificate "./${prefix}-cosign.cert" "${bom_file}"
             if [[ $has_artifacts == true ]]; then
-              SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./''"${prefix}"'-cosign.sig", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "CERTIFICATE_X_509","filePath": "./''"${prefix}"'-cosign.cert", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]}'
+              SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-cosign.sig", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "CERTIFICATE_X_509","filePath": "./'"${prefix}"'-cosign.cert", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]}'
             else
-              SIGN_RESULT+=', "artifacts": [{"type": "SIGNATURE","filePath": "./''"${prefix}"'-cosign.sig", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "CERTIFICATE_X_509","filePath": "./''"${prefix}"'-cosign.cert", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]}'
+              SIGN_RESULT+=', "artifacts": [{"type": "SIGNATURE","filePath": "./'"${prefix}"'-cosign.sig", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "CERTIFICATE_X_509","filePath": "./'"${prefix}"'-cosign.cert", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]}'
               has_artifacts=true
             fi
           fi
