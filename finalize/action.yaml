@@ -49,7 +49,7 @@ inputs:
     description: "SCE commit date (from initialize action)"
     required: false
   sce_vcs_uri:
-    description: "SCE VCS URI (defaults to github.com/${{github.repository}})"
+    description: "SCE VCS URI (defaults to github.com/ this github repo)"
     required: false
   component:
     description: "Component UUID (optional)"
