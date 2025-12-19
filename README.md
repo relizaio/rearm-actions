@@ -4,10 +4,11 @@ A collection of GitHub Actions for integrating with [ReARM](https://rearmhq.com)
 
 ## Actions
 
-This repository contains three composable actions that work together to manage the complete release lifecycle:
+This repository contains composable actions that work together to manage the complete release lifecycle:
 
 | Action | Description |
 |--------|-------------|
+| [setup-cli](./setup-cli) | Install the ReARM CLI on GitHub Actions runners |
 | [initialize](./initialize) | Initialize ReARM release flow - checks for changes, creates pending releases, syncs branches |
 | [sbom-sign-scan](./sbom-sign-scan) | Generate SBOMs, perform signing, and run CodeQL analysis |
 | [finalize](./finalize) | Submit release metadata and finalize the release on ReARM |
@@ -31,7 +32,7 @@ jobs:
           fetch-depth: 0  # Required for full git history
 
       - name: Setup ReARM CLI
-        # Add your ReARM CLI installation step here
+        uses: relizaio/rearm-actions/setup-cli@main
 
       # Step 1: Initialize release
       - name: Initialize ReARM Release
@@ -109,11 +110,18 @@ jobs:
 
 ## Prerequisites
 
-- **ReARM CLI**: Must be pre-installed and available as `rearm` command
+- **ReARM CLI**: Use the `setup-cli` action to install it, or pre-install and make available as `rearm` command
 - **jq**: Required for JSON parsing
 - **Git history**: Use `fetch-depth: 0` in checkout for full history (required for change detection and branch sync)
 
 ## Action Details
+
+### [Setup CLI](./setup-cli)
+
+Installs the ReARM CLI (`rearm`) on GitHub Actions runners.
+
+**Key inputs:**
+- `version` - Version of ReARM CLI to install (default: `25.12.7`)
 
 ### [Initialize](./initialize/README.md)
 
@@ -146,6 +154,9 @@ Submits release metadata to ReARM and optionally finalizes the release.
 ## Minimal Example (Without SBOM)
 
 ```yaml
+- name: Setup ReARM CLI
+  uses: relizaio/rearm-actions/setup-cli@main
+
 - name: Initialize
   id: init
   uses: relizaio/rearm-actions/initialize@main
