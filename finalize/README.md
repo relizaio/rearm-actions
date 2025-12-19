@@ -42,9 +42,9 @@ GitHub Action to submit release metadata and finalize a release on Rearm. This a
 | `sce_commit_message` | | SCE commit message (from initialize action) |
 | `sce_commit_date` | | SCE commit date (from initialize action) |
 | `sce_vcs_uri` | | SCE VCS URI (defaults to github.com/${{github.repository}}) |
-| `rearm_component_id` | | Component UUID for this release if org-wide key is used |
+| `component` | | Component UUID (optional) |
 | `finalize_release` | `true` | Finalize the release after adding it |
-| `path` | `.` | Path relative to root of the repo |
+| `repo_path` | `.` | Repository path relative to workspace root |
 | `send_sce_data` | `true` | Sends Source Code entry data along with the release |
 | `scearts` | | Source Code Entry artifacts JSON (from sbom-sign-scan) |
 | `odelartsjson` | | Output Deliverable artifacts JSON (from sbom-sign-scan) |
@@ -150,7 +150,7 @@ jobs:
         with:
           rearm_api_id: ${{ secrets.REARM_API_ID }}
           rearm_api_key: ${{ secrets.REARM_API_KEY }}
-          rearm_component_id: "your-component-uuid"
+          component: "your-component-uuid"
           image_full_name: myimage
           rearm_build_start: ${{ steps.init.outputs.build_start }}
           rearm_short_version: ${{ steps.init.outputs.short_version }}

@@ -33,7 +33,7 @@ This action performs SBOM generation and signing, and runs CodeQL analysis. It o
 | `registry_username` | | Username for image registry |
 | `registry_password` | | Password for image registry |
 | `registry_host` | | Host for image registry (null for DockerHub) |
-| `path` | `.` | Path relative to root of the repo |
+| `repo_path` | `.` | Repository path relative to workspace root |
 | `enable_public_cosign_sigstore` | `false` | Sign deliverables and SBOMs using public sigstore via cosign |
 | `enable_codeql` | `false` | Enable CodeQL analysis |
 | `codeql_language` | `none` | Language to analyze with CodeQL, use 'custom' for Dockerfile.sarif |

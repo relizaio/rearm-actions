@@ -51,15 +51,15 @@ inputs:
   sce_vcs_uri:
     description: "SCE VCS URI (defaults to github.com/${{github.repository}})"
     required: false
-  rearm_component_id:
-    description: "Component UUID for this release if org-wide key is used"
+  component:
+    description: "Component UUID (optional)"
     required: false
   finalize_release:
     description: "Finalize the release after adding it (true/false)"
     required: false
     default: 'true'
-  path:
-    description: "Path to the relative to root of the repo (default is '.')"
+  repo_path:
+    description: "Repository path relative to workspace root"
     required: false
     default: .
   send_sce_data:
@@ -82,7 +82,7 @@ runs:
       shell: bash
       run: |
         mkdir -p /tmp/reliza
-        cd ${{ inputs.path }}
+        cd ${{ inputs.repo_path }}
         echo "" > /tmp/reliza/rearm_command
         echo -n "--lifecycle ${{inputs.rearm_build_lifecycle}} " >> /tmp/reliza/rearm_command
 
@@ -121,7 +121,7 @@ runs:
     - name: Submit metadata to Rearm
       shell: bash
       run: |
-        cd ${{ inputs.path }}
+        cd ${{ inputs.repo_path }}
 
         # Use purl from sbom-sign-scan if provided
         purl="${{inputs.purl}}"
@@ -155,9 +155,9 @@ runs:
         then
           echo -n "--odeldigests ${{inputs.image_digest}} " >> /tmp/reliza/rearm_command
         fi
-        if [ ! -z "${{inputs.rearm_component_id}}" ]
+        if [ ! -z "${{inputs.component}}" ]
         then
-          echo -n "--component ${{inputs.rearm_component_id}} " >> /tmp/reliza/rearm_command
+          echo -n "--component ${{inputs.component}} " >> /tmp/reliza/rearm_command
         fi
         echo -n "--datestart ${{inputs.rearm_build_start}} " >> /tmp/reliza/rearm_command
         echo -n "--dateend $(date -Iseconds) " >> /tmp/reliza/rearm_command
@@ -182,7 +182,11 @@ runs:
         # Conditionally finalize release
         if [[ "${{ inputs.finalize_release }}" == 'true' && -n "$release_uuid" ]]; then
           echo "Finalizing release with UUID: $release_uuid"
-          rearm releasefinalizer --releaseid $release_uuid -u ${{ inputs.rearm_api_url }} -i ${{ inputs.rearm_api_id }} -k ${{ inputs.rearm_api_key }}
+          finalizer_cmd="rearm releasefinalizer --releaseid $release_uuid -u ${{ inputs.rearm_api_url }} -i ${{ inputs.rearm_api_id }} -k ${{ inputs.rearm_api_key }}"
+          if [ ! -z "${{inputs.component}}" ]; then
+            finalizer_cmd="$finalizer_cmd --component ${{inputs.component}}"
+          fi
+          eval $finalizer_cmd
         else
           echo "Skipping release finalization."
         fi
@@ -192,7 +196,7 @@ runs:
       shell: bash
       run: |
         echo "checking build status..."
-        cd ${{ inputs.path }}
+        cd ${{ inputs.repo_path }}
         if [[ "${{inputs.rearm_build_lifecycle}}" == "REJECTED" ]]
         then
           echo "Failing build since Rearm build Lifecycle is rejected"

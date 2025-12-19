@@ -38,8 +38,8 @@ inputs:
     description: "Host for image registry"
     default: null
     required: false
-  path:
-    description: "Path to the relative to root of the repo (default is '.')"
+  repo_path:
+    description: "Repository path relative to workspace root"
     required: false
     default: .
   enable_public_cosign_sigstore:
@@ -104,7 +104,7 @@ runs:
       shell: bash
       if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' }}
       run: |
-        cd ${{ inputs.path }}
+        cd ${{ inputs.repo_path }}
         docker pull ${{inputs.image_full_name}}@${{inputs.image_digest}}
         docker save -o docker-${{inputs.rearm_short_version}}.tar ${{inputs.image_full_name}}@${{inputs.image_digest}} 
     - id: install-cdxgen
@@ -121,19 +121,19 @@ runs:
       name: Sign with cosign
       shell: bash
       run: |
-        cd ${{ inputs.path }}
+        cd ${{ inputs.repo_path }}
         cosign sign -y --output-payload deliverable-cosign.sigpl --output-signature deliverable-cosign.sig --output-certificate deliverable-cosign.cert ${{inputs.image_full_name}}@${{inputs.image_digest}}
     - name: Initialize CodeQL
       if: ${{ inputs.enable_codeql == 'true' && inputs.codeql_language != 'custom'}}
       uses: github/codeql-action/init@c43362b91a940600cde2ebae39ec7a35ad66bdc0 # CodeQL Bundle v2.23.8
       with:
         languages: ${{ inputs.codeql_language }}
-        source-root: ${{ inputs.path }}
+        source-root: ${{ inputs.repo_path }}
     - name: Run Containerized SAST
       if: ${{ inputs.enable_codeql == 'true' && inputs.codeql_language == 'custom'}}
       shell: bash
       run: |
-        cd ${{ inputs.path }}
+        cd ${{ inputs.repo_path }}
         mkdir codeql-results
         docker build -t sarif-container -f Dockerfile.sarif .
         docker run -d --name sarif-container --rm --entrypoint sleep sarif-container 60
@@ -144,17 +144,17 @@ runs:
       uses: github/codeql-action/analyze@e96e340c1e95e91449de06aabfa9525b7b98113f # CodeQL Bundle v2.22.4
       with:
         upload: false
-        output: ${{ inputs.path }}/codeql-results
+        output: ${{ inputs.repo_path }}/codeql-results
     - name: Verify CodeQL output present
       if: ${{ inputs.enable_codeql == 'true' }}
       shell: bash
       run: |
-        du -h ${{ inputs.path }}/codeql-results/${{inputs.codeql_language}}.sarif
+        du -h ${{ inputs.repo_path }}/codeql-results/${{inputs.codeql_language}}.sarif
     - id: generate-artifacts
       name: Generate SBOM artifacts
       shell: bash
       run: |
-        cd ${{ inputs.path }}
+        cd ${{ inputs.repo_path }}
 
         # Function to sign SBOM and build artifacts JSON
         # Usage: sign_sbom <bom_file> <output_prefix>
