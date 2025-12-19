@@ -1,0 +1,13 @@
+name: setup-rearm
+description: Setup Rearm CLI, rearm, on GitHub Actions runners
+branding:
+  icon: 'terminal'
+  color: 'green'
+inputs:
+  version:
+    description: Version of rearm CLI to install
+    required: false
+    default: 25.12.7
+runs:
+  using: node24
+  main: dist/index.js
