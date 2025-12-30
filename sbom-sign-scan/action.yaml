@@ -141,7 +141,7 @@ runs:
         docker cp sarif-container:/sarif/results.sarif ./codeql-results/${{inputs.codeql_language}}.sarif
     - name: Run CodeQL
       if: ${{ inputs.enable_codeql == 'true' && inputs.codeql_language != 'custom'}}
-      uses: github/codeql-action/analyze@e96e340c1e95e91449de06aabfa9525b7b98113f # CodeQL Bundle v2.22.4
+      uses: github/codeql-action/analyze@c43362b91a940600cde2ebae39ec7a35ad66bdc0 # CodeQL Bundle v2.23.8
       with:
         upload: false
         output: ${{ inputs.repo_path }}/codeql-results
