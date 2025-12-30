@@ -117,8 +117,8 @@ runs:
       name: Install Cosign
       uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
     - id: cosign-sign
-      if: ${{ inputs.enable_public_cosign_sigstore == 'true' }}
-      name: Sign with cosign
+      if: ${{ inputs.enable_public_cosign_sigstore == 'true' && inputs.deliverable_type == 'CONTAINER' }}
+      name: Sign container deliverable with cosign
       shell: bash
       run: |
         cd ${{ inputs.repo_path }}
