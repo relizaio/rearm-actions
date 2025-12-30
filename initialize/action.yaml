@@ -186,15 +186,15 @@ runs:
           echo "Initializing pending release..."
           
           # Get commit message and date
-          COMMIT_MESSAGE=$(git log -1 --pretty=%s 2>/dev/null || echo "")
-          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad 2>/dev/null || echo "")
+          COMMIT_MESSAGE=$(git log -1 --pretty=%s -- "$REPO_PATH" 2>/dev/null || echo "")
+          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad -- "$REPO_PATH" 2>/dev/null || echo "")
           
           # Get commits since last release for getversion command
           COMMITS_BASE64=""
           if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
-            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT}" --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" -- ./ 2>/dev/null || echo "")
+            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT}" --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
           else
-            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" 2>/dev/null || echo "")
+            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
           fi
           
           if [ -n "$COMMITS_OUTPUT" ]; then
