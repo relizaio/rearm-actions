@@ -152,7 +152,7 @@ runs:
             if git cat-file -t "$LAST_COMMIT" >/dev/null 2>&1; then
               # Check for diff
               local diff_output
-              diff_output=$(git diff "${LAST_COMMIT}..${COMMIT}" -- ./ 2>/dev/null) || diff_output=""
+              diff_output=$(git diff "${LAST_COMMIT}..${COMMIT}" -- "$REPO_PATH" 2>/dev/null) || diff_output=""
               if [ -n "$diff_output" ]; then
                 DO_BUILD="true"
               fi
