@@ -27,7 +27,7 @@ inputs:
   source_code_sbom_type:
     required: false
     default: 'none'
-    description: "Generates SBOM based on source code analysis, possible values: npm, helm, custom, other, none. Use 'custom' to follow Dockerfile.sbom with expected output in /sbom/sbom.json"
+    description: "Generates SBOM based on source code analysis, possible values: npm, helm, custom, go, other, none. Use 'custom' to follow Dockerfile.sbom with expected output in /sbom/sbom.json"
   registry_username:
     description: "Username for image registry"
     required: false
@@ -85,7 +85,7 @@ runs:
       name: Setup Node JS
       uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
       with:
-        node-version: 22
+        node-version: 24
     - name: Login to DockerHub
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' && inputs.registry_host == null }}
@@ -111,7 +111,7 @@ runs:
       if: ${{ inputs.enable_sbom == 'true' }}
       name: Install cdxgen cli
       shell: bash
-      run: npm install -g @cyclonedx/cdxgen@12.0.0 --ignore-scripts
+      run: npm install -g @cyclonedx/cdxgen@12.1.1 --ignore-scripts
     - id: install-cosign
       if: ${{ inputs.enable_public_cosign_sigstore == 'true' }}
       name: Install Cosign
@@ -216,12 +216,15 @@ runs:
         export FETCH_LICENSE=true
         if [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'npm' ]]
         then
-          npm install --global @cyclonedx/cyclonedx-npm@4.0.0 --ignore-scripts
+          npm install --global @cyclonedx/cyclonedx-npm@4.1.2 --ignore-scripts
           npm ci
           cyclonedx-npm --flatten-components > fs.cdx.bom.json
         elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'helm' ]]
         then
           cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecyle build -t helm -o fs.cdx.bom.json
+        elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'go' ]]
+        then      
+          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build -t go -o fs.cdx.bom.json
         elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'other' ]]
         then      
           cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build -o fs.cdx.bom.json
