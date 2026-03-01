@@ -85,7 +85,7 @@ runs:
       name: Setup Node JS
       uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f # v6.1.0
       with:
-        node-version: 24
+        node-version: 22
     - name: Login to DockerHub
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
       if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' && inputs.registry_host == null }}
