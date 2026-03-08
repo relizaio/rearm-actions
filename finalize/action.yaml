@@ -116,7 +116,7 @@ runs:
           echo -n "--date ${{inputs.sce_commit_date}} " >> /tmp/reliza/rearm_command
         fi
 
-        echo -n "--vcstype git --vcsuri ${sce_vcs_uri} " >> /tmp/reliza/rearm_command
+        echo -n "--vcstype git --vcsuri ${sce_vcs_uri} --repo-path ${{inputs.repo_path}} " >> /tmp/reliza/rearm_command
 
     - name: Submit metadata to Rearm
       shell: bash
