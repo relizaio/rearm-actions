@@ -221,13 +221,13 @@ runs:
           cyclonedx-npm --flatten-components > fs.cdx.bom.json
         elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'helm' ]]
         then
-          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecyle build -t helm -o fs.cdx.bom.json
+          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecyle build --spec-version 1.6 -t helm -o fs.cdx.bom.json
         elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'go' ]]
         then      
-          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build -t go -o fs.cdx.bom.json
+          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build --spec-version 1.6 -t go -o fs.cdx.bom.json
         elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'other' ]]
         then      
-          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build -o fs.cdx.bom.json
+          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build --spec-version 1.6 -o fs.cdx.bom.json
         elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'custom' ]]
         then
           docker build -t sbom-container -f Dockerfile.sbom --build-arg VERSION="${{inputs.rearm_full_version}}" .
@@ -257,7 +257,7 @@ runs:
         then
           export FETCH_LICENSE=false
           pip install blint==3.1.2
-          cdxgen docker-${{inputs.rearm_short_version}}.tar -t docker --lifecycle build --project-version "${{ inputs.rearm_full_version }}" -o docker.cdx.bom.raw.json
+          cdxgen docker-${{inputs.rearm_short_version}}.tar -t docker --lifecycle build --project-version "${{ inputs.rearm_full_version }}" --spec-version 1.6 -o docker.cdx.bom.raw.json
           du -h ./docker.cdx.bom.raw.json
           rearm bomutils fixpurl -f ./docker.cdx.bom.raw.json -o ./docker.cdx.bom.json --newpurl "${purl}"
 
