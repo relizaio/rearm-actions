@@ -43,6 +43,10 @@ inputs:
   component:
     description: "Component UUID (optional)"
     required: false
+  enable_invisible_char_check:
+    description: "Scan files changed since the previous release for invisible/trojan-source characters using anti-trojan-source. Falls back to scanning all tracked files if no previous release is known or the last commit is unreachable. Fails the build on any finding."
+    required: false
+    default: 'false'
 outputs:
   do_build:
     description: "Whether a build is needed"
@@ -391,3 +395,41 @@ runs:
         else
           echo "No build needed"
         fi
+    - id: invisible-char-check
+      if: ${{ inputs.enable_invisible_char_check == 'true' && steps.initialize.outputs.do_build == 'true' }}
+      name: Scan for invisible/trojan source characters
+      shell: bash
+      env:
+        LAST_COMMIT: ${{ steps.initialize.outputs.last_commit }}
+        COMMIT: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        cd ${{ inputs.repo_path }}
+
+        mkdir -p /tmp/reliza
+        FILES_LIST=/tmp/reliza/invisible-char-files.txt
+
+        if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ] && git cat-file -t "$LAST_COMMIT" >/dev/null 2>&1; then
+          echo "Scanning files changed in ${LAST_COMMIT}..${COMMIT} (added/modified only)"
+          git diff -z --name-only --diff-filter=AM "$LAST_COMMIT" "$COMMIT" -- . > "$FILES_LIST"
+        else
+          if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
+            echo "last_commit ${LAST_COMMIT} not available locally (shallow checkout?) — scanning all tracked files."
+            echo "Use fetch-depth: 0 in checkout to enable diff-scoped scanning."
+          else
+            echo "No last_commit available (first build) — scanning all tracked files."
+          fi
+          git ls-files -z > "$FILES_LIST"
+        fi
+
+        echo "Files to scan:"
+        tr '\0' '\n' < "$FILES_LIST" | sed 's/^/  /'
+
+        if [ ! -s "$FILES_LIST" ]; then
+          echo "No files to scan."
+          rm -f "$FILES_LIST"
+          exit 0
+        fi
+
+        xargs -0 npx -y anti-trojan-source@1.8.1 --verbose < "$FILES_LIST"
+        rm -f "$FILES_LIST"

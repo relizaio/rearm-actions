@@ -9,7 +9,7 @@ This repository contains composable actions that work together to manage the com
 | Action | Description |
 |--------|-------------|
 | [setup-cli](./setup-cli) | Install the ReARM CLI on GitHub Actions runners |
-| [initialize](./initialize) | Initialize ReARM release flow - checks for changes, creates pending releases, syncs branches |
+| [initialize](./initialize) | Initialize ReARM release flow - checks for changes, creates pending releases, syncs branches, optionally scans for invisible/trojan-source characters |
 | [sbom-sign-scan](./sbom-sign-scan) | Generate SBOMs, perform signing, and run CodeQL analysis |
 | [finalize](./finalize) | Submit release metadata and finalize the release on ReARM |
 
@@ -125,7 +125,7 @@ Installs the ReARM CLI (`rearm`) on GitHub Actions runners.
 
 ### [Initialize](./initialize/README.md)
 
-Detects changes since the last release, creates a pending release if needed, and synchronizes branches with ReARM.
+Detects changes since the last release, creates a pending release if needed, synchronizes branches with ReARM, and (optionally) fails the build on invisible/trojan-source characters in files changed since the last release (`enable_invisible_char_check`).
 
 **Key outputs:**
 - `do_build` - Whether a build is needed

@@ -10,6 +10,7 @@ GitHub Action to initialize ReARM release flow. This action checks for changes s
 - Supports component creation on-the-fly
 - Works with monorepos via `repo_path` parameter
 - Outputs SCE (Source Code Entry) data for use with the finalize action
+- Optional invisible/trojan-source character scan over changed files; fails the build on any finding (`enable_invisible_char_check`)
 
 ## Prerequisites
 
@@ -32,6 +33,7 @@ GitHub Action to initialize ReARM release flow. This action checks for changes s
 | `create_component_version_schema` | Version schema for new component | No | `semver` |
 | `create_component_branch_version_schema` | Branch version schema for new component | No | `semver` |
 | `allow_rebuild` | Allow rebuild of existing version | No | `false` |
+| `enable_invisible_char_check` | Scan files changed since the previous release for invisible/trojan-source characters with [anti-trojan-source](https://www.npmjs.com/package/anti-trojan-source). Fails the build on any finding. See [Invisible Character Check](#invisible-character-check). | No | `false` |
 
 ## Outputs
 
@@ -175,6 +177,30 @@ jobs:
 3. **Sync Branches**: Calls `rearm syncbranches` to synchronize branch information with ReARM.
 
 4. **Set Outputs**: Sets both step outputs and environment variables for use in subsequent steps, including SCE data for the finalize action.
+
+5. **Invisible Character Check** (optional): If `enable_invisible_char_check` is `true` and `do_build` resolved to `true`, scans changed source files and fails the build on any finding. See [Invisible Character Check](#invisible-character-check).
+
+## Invisible Character Check
+
+When `enable_invisible_char_check` is `true`, the action runs [anti-trojan-source](https://www.npmjs.com/package/anti-trojan-source) over source files and fails the build on any finding (bidi controls, zero-width characters, homoglyph confusables, etc. — see [trojansource.codes](https://trojansource.codes/)).
+
+File selection reuses the same diff used to populate `commit_list` and resolve `do_build`:
+
+- If a previous release exists and its commit is reachable locally, only files **added or modified** in `last_commit..github.sha` (scoped to `repo_path`) are scanned.
+- Otherwise (first build, or shallow checkout where `last_commit` isn't reachable) all tracked files under `repo_path` are scanned. Use `fetch-depth: 0` in your checkout step to keep scans diff-scoped.
+- The step is skipped when `do_build` is `false` (no changes since the last release in `repo_path`).
+
+```yaml
+- name: Initialize ReARM Release
+  id: init
+  uses: relizaio/rearm-actions/initialize@main
+  with:
+    rearm_api_key: ${{ secrets.REARM_API_KEY }}
+    rearm_api_id: ${{ secrets.REARM_API_ID }}
+    enable_invisible_char_check: 'true'
+```
+
+Requires Node.js available on the runner (pre-installed on GitHub-hosted runners; install separately on self-hosted).
 
 ## Notes
 
