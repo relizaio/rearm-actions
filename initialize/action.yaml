@@ -422,11 +422,23 @@ runs:
           git ls-files -z > "$FILES_LIST"
         fi
 
-        echo "Files to scan:"
+        # Drop binary files (favicon.ico, images, fonts, etc.) — anti-trojan-source
+        # doesn't skip them and they trigger false positives on raw byte sequences.
+        # grep -Iq uses the same NUL-byte heuristic as git's binary detection.
+        FILTERED_LIST=/tmp/reliza/invisible-char-files.filtered
+        : > "$FILTERED_LIST"
+        while IFS= read -r -d '' f; do
+          if [ -f "$f" ] && grep -Iq . "$f" 2>/dev/null; then
+            printf '%s\0' "$f" >> "$FILTERED_LIST"
+          fi
+        done < "$FILES_LIST"
+        mv "$FILTERED_LIST" "$FILES_LIST"
+
+        echo "Files to scan (text only):"
         tr '\0' '\n' < "$FILES_LIST" | sed 's/^/  /'
 
         if [ ! -s "$FILES_LIST" ]; then
-          echo "No files to scan."
+          echo "No text files to scan."
           rm -f "$FILES_LIST"
           exit 0
         fi

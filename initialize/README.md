@@ -189,6 +189,7 @@ File selection reuses the same diff used to populate `commit_list` and resolve `
 - If a previous release exists and its commit is reachable locally, only files **added or modified** in `last_commit..github.sha` (scoped to `repo_path`) are scanned.
 - Otherwise (first build, or shallow checkout where `last_commit` isn't reachable) all tracked files under `repo_path` are scanned. Use `fetch-depth: 0` in your checkout step to keep scans diff-scoped.
 - The step is skipped when `do_build` is `false` (no changes since the last release in `repo_path`).
+- Binary files (images, fonts, favicons, etc.) are filtered out before scanning using a NUL-byte heuristic, so they don't produce false positives on raw byte sequences.
 
 ```yaml
 - name: Initialize ReARM Release
