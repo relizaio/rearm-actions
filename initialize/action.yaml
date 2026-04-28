@@ -145,8 +145,12 @@ runs:
           fi
           
           local latest_output
-          latest_output=$(rearm "${get_latest_args[@]}" 2>/dev/null) || true
-          
+          if ! latest_output=$(rearm "${get_latest_args[@]}" 2>&1); then
+            echo "ERROR: rearm getlatestrelease failed:" >&2
+            echo "$latest_output" >&2
+            exit 1
+          fi
+
           LAST_COMMIT=$(echo "$latest_output" | jq -r '.sourceCodeEntryDetails.commit // empty' 2>/dev/null || echo "")
           echo "Last Commit: $LAST_COMMIT"
           
@@ -290,7 +294,11 @@ runs:
               get_version_args+=("--component" "$COMPONENT")
             fi
             
-            GET_VERSION_OUTPUT=$(rearm "${get_version_args[@]}" 2>&1)
+            if ! GET_VERSION_OUTPUT=$(rearm "${get_version_args[@]}" 2>&1); then
+              echo "ERROR: rearm getversion failed:" >&2
+              echo "$GET_VERSION_OUTPUT" >&2
+              exit 1
+            fi
             echo "ReARM getversion output: $GET_VERSION_OUTPUT"
             
             # Parse version from JSON response

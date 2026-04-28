@@ -139,8 +139,10 @@ runs:
           echo -n "--odelartsjson '${odelartsjson}' " >> /tmp/reliza/rearm_command
         fi
 
-        echo -n "-b ${{github.ref_name}} -k ${{ inputs.rearm_api_key }} \
-          -i ${{ inputs.rearm_api_id }} -u ${{ inputs.rearm_api_url }} \
+        # Note: API key/ID are intentionally NOT written to /tmp/reliza/rearm_command —
+        # they're injected only at eval time below so the debug `cat` and any on-disk
+        # artifact never contain credentials.
+        echo -n "-b ${{github.ref_name}} -u ${{ inputs.rearm_api_url }} \
           -v \"${{ inputs.rearm_full_version }}\" " >> /tmp/reliza/rearm_command
         echo -n "--odelid ${{inputs.image_full_name}} " >> /tmp/reliza/rearm_command
         echo -n "--odelbuildid github${{github.action}}${{github.sha}} " >> /tmp/reliza/rearm_command
@@ -161,17 +163,15 @@ runs:
         fi
         echo -n "--datestart ${{inputs.rearm_build_start}} " >> /tmp/reliza/rearm_command
         echo -n "--dateend $(date -Iseconds) " >> /tmp/reliza/rearm_command
-        # debug
+        # debug — safe: rearm_command contains no credentials
         cat /tmp/reliza/rearm_command
-        # send data
-        echo rearm addrelease $(cat /tmp/reliza/rearm_command) > /tmp/reliza/rlz_cmd_exec
-        # Run rearm addrelease and capture output
-
-        if rearm_output=$(eval $(cat /tmp/reliza/rlz_cmd_exec) 2>&1); then
+        # send data — credentials injected only at eval time, never written to disk
+        if rearm_output=$(eval rearm addrelease -k '${{ inputs.rearm_api_key }}' -i '${{ inputs.rearm_api_id }}' $(cat /tmp/reliza/rearm_command) 2>&1); then
           echo "Success: $rearm_output"
         else
           exit_code=$?
-          echo "Error (exit code $exit_code): $rearm_output"
+          echo "ERROR: rearm addrelease failed (exit code $exit_code):" >&2
+          echo "$rearm_output" >&2
           exit $exit_code
         fi
 
@@ -182,8 +182,13 @@ runs:
         # Conditionally finalize release
         if [[ "${{ inputs.finalize_release }}" == 'true' && -n "$release_uuid" ]]; then
           echo "Finalizing release with UUID: $release_uuid"
-          finalizer_cmd="rearm releasefinalizer --releaseid $release_uuid -u ${{ inputs.rearm_api_url }} -i ${{ inputs.rearm_api_id }} -k ${{ inputs.rearm_api_key }}"
-          eval $finalizer_cmd
+          if ! finalizer_output=$(rearm releasefinalizer --releaseid "$release_uuid" -u '${{ inputs.rearm_api_url }}' -i '${{ inputs.rearm_api_id }}' -k '${{ inputs.rearm_api_key }}' 2>&1); then
+            exit_code=$?
+            echo "ERROR: rearm releasefinalizer failed (exit code $exit_code):" >&2
+            echo "$finalizer_output" >&2
+            exit $exit_code
+          fi
+          echo "$finalizer_output"
         else
           echo "Skipping release finalization."
         fi
