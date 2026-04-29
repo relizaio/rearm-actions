@@ -97,8 +97,25 @@ runs:
         ALLOW_REBUILD: ${{ inputs.allow_rebuild }}
         COMPONENT: ${{ inputs.component }}
         VCS_URI: ${{ github.server_url }}/${{ github.repository }}
-        COMMIT: ${{ github.sha }}
-        GITHUB_REF: ${{ github.ref }}
+        # On `pull_request` events, github.sha is the synthetic merge
+        # commit and github.ref is `refs/pull/N/merge` — neither is
+        # what callers actually mean by "the commit/branch being
+        # released". Prefer the PR's actual head metadata when in a PR
+        # context so the release lands on the source branch (unified
+        # history pre- and post-PR-open) and check-runs land on the
+        # SHA branch protection actually looks at. Falls back to
+        # github.sha / github.ref on push and other events.
+        COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        GITHUB_REF: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
+        # PR metadata for the optional --pr-* forwarding to ReARM. Only
+        # populated on `pull_request` events; addrelease / getversion
+        # pass these through to the source branch's pullRequestData via
+        # the new `pullRequest` GraphQL input.
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_STATE: ${{ github.event.pull_request.number && 'OPEN' || '' }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
+        PR_ENDPOINT: ${{ github.event.pull_request.html_url }}
       run: |
         set -e
         
@@ -193,9 +210,13 @@ runs:
         if [ "$DO_BUILD" = "true" ]; then
           echo "Initializing pending release..."
           
-          # Get commit message and date
-          COMMIT_MESSAGE=$(git log -1 --pretty=%s -- "$REPO_PATH" 2>/dev/null || echo "")
-          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad -- "$REPO_PATH" 2>/dev/null || echo "")
+          # Get commit message and date — pin to $COMMIT explicitly so
+          # the metadata is consistent with the SHA we send to ReARM.
+          # Without the explicit ref, `git log -1` reads HEAD, which on
+          # `pull_request` events is the synthetic merge commit even
+          # though we resolved $COMMIT to the PR's actual head SHA.
+          COMMIT_MESSAGE=$(git log -1 --pretty=%s "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
+          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
           
           # Get commits since last release for getversion command
           COMMITS_BASE64=""
@@ -250,9 +271,21 @@ runs:
             if [ -n "$COMPONENT" ]; then
               add_release_args+=("--component" "$COMPONENT")
             fi
-            
+
+            # Forward PR metadata when running on a `pull_request`
+            # event so ReARM updates pullRequestData on the source
+            # branch via the existing setPRDataOnBranch path. PR_NUMBER
+            # and PR_STATE are empty on non-PR events.
+            if [ -n "$PR_NUMBER" ] && [ -n "$PR_STATE" ]; then
+              add_release_args+=("--pr-number" "$PR_NUMBER")
+              add_release_args+=("--pr-state" "$PR_STATE")
+              [ -n "$PR_TITLE" ] && add_release_args+=("--pr-title" "$PR_TITLE")
+              [ -n "$PR_TARGET_BRANCH" ] && add_release_args+=("--pr-target-branch" "$PR_TARGET_BRANCH")
+              [ -n "$PR_ENDPOINT" ] && add_release_args+=("--pr-endpoint" "$PR_ENDPOINT")
+            fi
+
             rearm "${add_release_args[@]}"
-            
+
             FULL_VERSION="$INPUT_VERSION"
             SHORT_VERSION="$INPUT_VERSION"
             echo "Pending release initialized successfully with provided version"
@@ -293,7 +326,17 @@ runs:
             if [ -n "$COMPONENT" ]; then
               get_version_args+=("--component" "$COMPONENT")
             fi
-            
+
+            # Forward PR metadata when running on a `pull_request`
+            # event — same shape as the addrelease branch above.
+            if [ -n "$PR_NUMBER" ] && [ -n "$PR_STATE" ]; then
+              get_version_args+=("--pr-number" "$PR_NUMBER")
+              get_version_args+=("--pr-state" "$PR_STATE")
+              [ -n "$PR_TITLE" ] && get_version_args+=("--pr-title" "$PR_TITLE")
+              [ -n "$PR_TARGET_BRANCH" ] && get_version_args+=("--pr-target-branch" "$PR_TARGET_BRANCH")
+              [ -n "$PR_ENDPOINT" ] && get_version_args+=("--pr-endpoint" "$PR_ENDPOINT")
+            fi
+
             if ! GET_VERSION_OUTPUT=$(rearm "${get_version_args[@]}" 2>&1); then
               echo "ERROR: rearm getversion failed:" >&2
               echo "$GET_VERSION_OUTPUT" >&2
@@ -409,7 +452,10 @@ runs:
       shell: bash
       env:
         LAST_COMMIT: ${{ steps.initialize.outputs.last_commit }}
-        COMMIT: ${{ github.sha }}
+        # Match the source-branch / PR-head resolution from the
+        # initialize step above so the diff is scoped to the same
+        # commits the release was registered against.
+        COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
       run: |
         set -euo pipefail
         cd ${{ inputs.repo_path }}

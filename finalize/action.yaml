@@ -95,10 +95,13 @@ runs:
           echo -n "--commits ${{inputs.commit_list}} " >> /tmp/reliza/rearm_command
         fi
 
-        # Use SCE data from initialize action or fall back to github context
+        # Use SCE data from initialize action or fall back to github
+        # context. On `pull_request` events github.sha is the synthetic
+        # merge commit; prefer the PR's actual head SHA so the SCE
+        # tracks the commit the developer pushed.
         sce_commit="${{inputs.sce_commit}}"
         if [ -z "$sce_commit" ]; then
-          sce_commit="${{github.sha}}"
+          sce_commit="${{ github.event.pull_request.head.sha || github.sha }}"
         fi
 
         sce_vcs_uri="${{inputs.sce_vcs_uri}}"
@@ -142,10 +145,17 @@ runs:
         # Note: API key/ID are intentionally NOT written to /tmp/reliza/rearm_command —
         # they're injected only at eval time below so the debug `cat` and any on-disk
         # artifact never contain credentials.
-        echo -n "-b ${{github.ref_name}} -u ${{ inputs.rearm_api_url }} \
+        # On `pull_request` events github.ref_name is `<N>/merge` (the
+        # synthetic ref) — use the PR's head_ref so the release lands
+        # on the source branch, unified with pre-PR commits.
+        rearm_branch_name="${{ github.head_ref || github.ref_name }}"
+        # github.sha on PR events is the synthetic merge commit; the
+        # buildid label uses the actual head SHA for traceability.
+        rearm_head_sha="${{ github.event.pull_request.head.sha || github.sha }}"
+        echo -n "-b ${rearm_branch_name} -u ${{ inputs.rearm_api_url }} \
           -v \"${{ inputs.rearm_full_version }}\" " >> /tmp/reliza/rearm_command
         echo -n "--odelid ${{inputs.image_full_name}} " >> /tmp/reliza/rearm_command
-        echo -n "--odelbuildid github${{github.action}}${{github.sha}} " >> /tmp/reliza/rearm_command
+        echo -n "--odelbuildid github${{github.action}}${rearm_head_sha} " >> /tmp/reliza/rearm_command
         echo -n "--odelbuilduri https://github.com/${{github.repository}}/actions/runs/${{github.run_id}} " >> /tmp/reliza/rearm_command
         if [[ -n "$purl" ]]; then
           echo -n "--odelidentifiers \"PURL:${purl}\" " >> /tmp/reliza/rearm_command
@@ -163,6 +173,21 @@ runs:
         fi
         echo -n "--datestart ${{inputs.rearm_build_start}} " >> /tmp/reliza/rearm_command
         echo -n "--dateend $(date -Iseconds) " >> /tmp/reliza/rearm_command
+
+        # Forward PR metadata when running on a `pull_request` event
+        # so ReARM updates pullRequestData on the source branch via
+        # the new addRelease pullRequest input. PR_NUMBER is empty on
+        # non-PR events; both must be set together.
+        PR_NUMBER='${{ github.event.pull_request.number }}'
+        if [ -n "$PR_NUMBER" ]; then
+          PR_TITLE='${{ github.event.pull_request.title }}'
+          PR_TARGET_BRANCH='${{ github.event.pull_request.base.ref }}'
+          PR_ENDPOINT='${{ github.event.pull_request.html_url }}'
+          echo -n "--pr-number ${PR_NUMBER} --pr-state OPEN " >> /tmp/reliza/rearm_command
+          [ -n "$PR_TITLE" ] && echo -n "--pr-title \"${PR_TITLE}\" " >> /tmp/reliza/rearm_command
+          [ -n "$PR_TARGET_BRANCH" ] && echo -n "--pr-target-branch ${PR_TARGET_BRANCH} " >> /tmp/reliza/rearm_command
+          [ -n "$PR_ENDPOINT" ] && echo -n "--pr-endpoint ${PR_ENDPOINT} " >> /tmp/reliza/rearm_command
+        fi
         # debug — safe: rearm_command contains no credentials
         cat /tmp/reliza/rearm_command
         # send data — credentials injected only at eval time, never written to disk
