@@ -7,7 +7,7 @@ inputs:
   version:
     description: Version of rearm CLI to install
     required: false
-    default: 26.03.12
+    default: 26.04.9
 runs:
   using: node24
   main: dist/index.js
