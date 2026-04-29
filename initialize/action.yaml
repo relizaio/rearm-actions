@@ -105,8 +105,11 @@ runs:
         # history pre- and post-PR-open) and check-runs land on the
         # SHA branch protection actually looks at. Falls back to
         # github.sha / github.ref on push and other events.
+        # Note: GITHUB_REF is reserved by the runner and step-level env
+        # cannot override it — the override is silently ignored, leaving
+        # the synthetic merge ref. Use a non-GITHUB_* name instead.
         COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
-        GITHUB_REF: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
+        RESOLVED_REF: ${{ github.head_ref && format('refs/heads/{0}', github.head_ref) || github.ref }}
         # PR metadata for the optional --pr-* forwarding to ReARM. Only
         # populated on `pull_request` events; addrelease / getversion
         # pass these through to the source branch's pullRequestData via
@@ -126,7 +129,7 @@ runs:
         if [ -n "$INPUT_BRANCH" ]; then
           BRANCH="$INPUT_BRANCH"
         else
-          BRANCH="$GITHUB_REF"
+          BRANCH="$RESOLVED_REF"
         fi
         
         echo "Repository URI: $VCS_URI"
