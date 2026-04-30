@@ -166,6 +166,16 @@ runs:
           
           local latest_output
           if ! latest_output=$(rearm "${get_latest_args[@]}" 2>&1); then
+            # On a brand-new component (first run with create_component=true),
+            # the VCS repo is not yet registered to any component in the org and
+            # getlatestrelease errors out. Treat that as "no previous release"
+            # and let the calling fallback set DO_BUILD=true so the create flow
+            # in addrelease/getversion can run. Surface every other error.
+            if echo "$latest_output" | grep -qE "VCS repository .* not found"; then
+              echo "No previous release found for this VCS repo (first build):" >&2
+              echo "$latest_output" >&2
+              return 1
+            fi
             echo "ERROR: rearm getlatestrelease failed:" >&2
             echo "$latest_output" >&2
             exit 1
