@@ -291,14 +291,18 @@ runs:
             fi
 
             # Forward PR metadata when running on a `pull_request`
-            # event so ReARM updates pullRequestData on the source
-            # branch via the existing setPRDataOnBranch path. PR_NUMBER
-            # and PR_STATE are empty on non-PR events.
+            # event so ReARM upserts the first-class PullRequest entity
+            # (keyed by target VCS + identity) and advances its head to
+            # the just-persisted SCE. PR_NUMBER / PR_STATE are empty on
+            # non-PR events. PR_NUMBER is forwarded as `--pr-identity`
+            # because the ReARM PR entity uses an opaque string id —
+            # GitHub PR numbers, GitLab MR iids and Gerrit change-ids
+            # all flow through the same flag. Requires CLI ≥ 26.05.1.
             if [ -n "$PR_NUMBER" ] && [ -n "$PR_STATE" ]; then
-              add_release_args+=("--pr-number" "$PR_NUMBER")
+              add_release_args+=("--pr-identity" "$PR_NUMBER")
               add_release_args+=("--pr-state" "$PR_STATE")
               [ -n "$PR_TITLE" ] && add_release_args+=("--pr-title" "$PR_TITLE")
-              [ -n "$PR_TARGET_BRANCH" ] && add_release_args+=("--pr-target-branch" "$PR_TARGET_BRANCH")
+              [ -n "$PR_TARGET_BRANCH" ] && add_release_args+=("--pr-target-branch-name" "$PR_TARGET_BRANCH")
               [ -n "$PR_ENDPOINT" ] && add_release_args+=("--pr-endpoint" "$PR_ENDPOINT")
             fi
 
@@ -346,12 +350,16 @@ runs:
             fi
 
             # Forward PR metadata when running on a `pull_request`
-            # event — same shape as the addrelease branch above.
+            # event — same shape as the addrelease branch above. The
+            # backend upserts the PullRequest entity at getversion
+            # time too when SCE/commits are present (and onlyversion
+            # is not set), so the PR row is registered as early as
+            # possible. Requires CLI ≥ 26.05.1.
             if [ -n "$PR_NUMBER" ] && [ -n "$PR_STATE" ]; then
-              get_version_args+=("--pr-number" "$PR_NUMBER")
+              get_version_args+=("--pr-identity" "$PR_NUMBER")
               get_version_args+=("--pr-state" "$PR_STATE")
               [ -n "$PR_TITLE" ] && get_version_args+=("--pr-title" "$PR_TITLE")
-              [ -n "$PR_TARGET_BRANCH" ] && get_version_args+=("--pr-target-branch" "$PR_TARGET_BRANCH")
+              [ -n "$PR_TARGET_BRANCH" ] && get_version_args+=("--pr-target-branch-name" "$PR_TARGET_BRANCH")
               [ -n "$PR_ENDPOINT" ] && get_version_args+=("--pr-endpoint" "$PR_ENDPOINT")
             fi
 
