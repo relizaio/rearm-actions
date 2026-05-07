@@ -179,7 +179,7 @@ runs:
         # by target VCS + identity) and advances its head to the
         # release's SCE. The GitHub PR number is forwarded as
         # `--pr-identity` because the entity uses an opaque string id.
-        # PR_NUMBER is empty on non-PR events. Requires CLI ≥ 26.05.1.
+        # PR_NUMBER is empty on non-PR events. Requires CLI ≥ 26.05.3.
         PR_NUMBER='${{ github.event.pull_request.number }}'
         if [ -n "$PR_NUMBER" ]; then
           PR_TITLE='${{ github.event.pull_request.title }}'

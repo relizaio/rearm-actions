@@ -81,6 +81,68 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # PR registration runs unconditionally on every `pull_request` event,
+    # before the do_build / DO_BUILD check on the next step. The
+    # initialize step's inline upsert (--pr-* flags on
+    # addrelease / getversion) only fires when DO_BUILD=true, but
+    # GitHub fires both `push` and `pull_request` events for the same
+    # head commit. Whichever event creates the release first sees
+    # DO_BUILD=true and registers the PR; the other sees DO_BUILD=false
+    # (release already exists) and never runs the inline upsert.
+    # Without this dedicated step, the PR row would be lost whenever
+    # the push event wins the race.
+    #
+    # The CLI subcommand is idempotent on (targetVcsRepository,
+    # identity), so it's safe to call multiple times per CI run
+    # (e.g. once per component in a monorepo). When the SCE for the
+    # commit doesn't exist yet, the PR row is registered without a
+    # head and the subsequent addrelease call (which carries the same
+    # --pr-* flags) advances the head once the SCE is persisted.
+    #
+    # Requires CLI ≥ 26.05.3 (the version that introduced
+    # `rearm pullrequest upsert`). Skipped on non-PR events.
+    - id: pr-register
+      name: Register PullRequest in ReARM
+      if: ${{ github.event.pull_request.number != null }}
+      shell: bash
+      env:
+        REARM_API_KEY: ${{ inputs.rearm_api_key }}
+        REARM_APIKEYID: ${{ inputs.rearm_api_id }}
+        REARM_API_URL: ${{ inputs.rearm_api_url }}
+        REPO_PATH: ${{ inputs.repo_path }}
+        COMPONENT: ${{ inputs.component }}
+        VCS_URI: ${{ github.server_url }}/${{ github.repository }}
+        COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_STATE: ${{ github.event.pull_request.merged && 'MERGED' || (github.event.pull_request.state == 'closed' && 'CLOSED' || 'OPEN') }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+        PR_TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
+        PR_ENDPOINT: ${{ github.event.pull_request.html_url }}
+      run: |
+        set -e
+        args=(
+          "pullrequest" "upsert"
+          "-i" "$REARM_APIKEYID"
+          "-k" "$REARM_API_KEY"
+          "-u" "$REARM_API_URL"
+          "--identity" "$PR_NUMBER"
+          "--state" "$PR_STATE"
+          "--commit" "$COMMIT"
+        )
+        if [ -n "$COMPONENT" ]; then
+          args+=("--component" "$COMPONENT")
+        else
+          args+=("--vcsuri" "$VCS_URI")
+          [ -n "$REPO_PATH" ] && args+=("--repo-path" "$REPO_PATH")
+        fi
+        [ -n "$PR_TITLE" ] && args+=("--title" "$PR_TITLE")
+        [ -n "$PR_SOURCE_BRANCH" ] && args+=("--source-branch-name" "$PR_SOURCE_BRANCH")
+        [ -n "$PR_TARGET_BRANCH" ] && args+=("--target-branch-name" "$PR_TARGET_BRANCH")
+        [ -n "$PR_ENDPOINT" ] && args+=("--endpoint" "$PR_ENDPOINT")
+        echo "Registering PR #$PR_NUMBER ($PR_STATE) on $VCS_URI / $REPO_PATH @ $COMMIT"
+        rearm "${args[@]}"
+
     - id: initialize
       name: Initialize ReARM Release
       shell: bash
@@ -297,7 +359,7 @@ runs:
             # non-PR events. PR_NUMBER is forwarded as `--pr-identity`
             # because the ReARM PR entity uses an opaque string id —
             # GitHub PR numbers, GitLab MR iids and Gerrit change-ids
-            # all flow through the same flag. Requires CLI ≥ 26.05.1.
+            # all flow through the same flag. Requires CLI ≥ 26.05.3.
             if [ -n "$PR_NUMBER" ] && [ -n "$PR_STATE" ]; then
               add_release_args+=("--pr-identity" "$PR_NUMBER")
               add_release_args+=("--pr-state" "$PR_STATE")
@@ -354,7 +416,7 @@ runs:
             # backend upserts the PullRequest entity at getversion
             # time too when SCE/commits are present (and onlyversion
             # is not set), so the PR row is registered as early as
-            # possible. Requires CLI ≥ 26.05.1.
+            # possible. Requires CLI ≥ 26.05.3.
             if [ -n "$PR_NUMBER" ] && [ -n "$PR_STATE" ]; then
               get_version_args+=("--pr-identity" "$PR_NUMBER")
               get_version_args+=("--pr-state" "$PR_STATE")
