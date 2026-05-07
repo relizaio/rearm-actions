@@ -388,6 +388,17 @@ runs:
               "--vcsuri" "$VCS_URI"
               "--repo-path" "$REPO_PATH"
             )
+
+            # `allow_rebuild=true` opts in to the CLI's --rebuild flag,
+            # which reuses the existing version assignment for this
+            # (component, branch, commit) instead of failing the duplicate.
+            # Off by default so the V31 backend dedup gate (rearm-saas,
+            # 2026-05) catches accidental races on the same head as a hard
+            # CI failure rather than silently returning the prior version.
+            # Requires CLI ≥ 26.05.4.
+            if [ "$ALLOW_REBUILD" = "true" ]; then
+              get_version_args+=("--rebuild")
+            fi
             
             if [ -n "$COMMIT_MESSAGE" ]; then
               get_version_args+=("--commitmessage" "$COMMIT_MESSAGE")
