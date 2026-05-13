@@ -295,15 +295,26 @@ runs:
           # Without the explicit ref, `git log -1` reads HEAD, which on
           # `pull_request` events is the synthetic merge commit even
           # though we resolved $COMMIT to the PR's actual head SHA.
-          COMMIT_MESSAGE=$(git log -1 --pretty=%s "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
+          #
+          # We ship only the subject (`%s`), never the full message
+          # body — agent-generated commits routinely have multi-KB
+          # bodies that have no value in the audit log. AI-Agent
+          # attribution trailers are appended onto the subject line
+          # via `%(trailers:key=…,unfold,separator=%x20)` so the
+          # backend's commit-trailer parser can pull them off without
+          # us shipping the rest of the body. Trailer keys are
+          # whitespace-bounded — agents must keep `ReARM-Agent` and
+          # `ReARM-Agentic-Session` values space-free.
+          AGENTIC_TRAILER_FMT='%(trailers:key=ReARM-Agent,key=ReARM-Agentic-Session,unfold,separator=%x20)'
+          COMMIT_MESSAGE=$(git log -1 --pretty="%s ${AGENTIC_TRAILER_FMT}" "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
           COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
-          
+
           # Get commits since last release for getversion command
           COMMITS_BASE64=""
           if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
-            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT}" --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
+            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT}" --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
           else
-            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
+            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
           fi
           
           if [ -n "$COMMITS_OUTPUT" ]; then
