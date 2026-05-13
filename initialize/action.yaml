@@ -395,7 +395,7 @@ runs:
             # Off by default so the V31 backend dedup gate (rearm-saas,
             # 2026-05) catches accidental races on the same head as a hard
             # CI failure rather than silently returning the prior version.
-            # Requires CLI ≥ 26.05.4.
+            # Requires CLI ≥ 26.05.5.
             if [ "$ALLOW_REBUILD" = "true" ]; then
               get_version_args+=("--rebuild")
             fi

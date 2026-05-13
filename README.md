@@ -121,7 +121,7 @@ jobs:
 Installs the ReARM CLI (`rearm`) on GitHub Actions runners.
 
 **Key inputs:**
-- `version` - Version of ReARM CLI to install (default: `26.05.4`)
+- `version` - Version of ReARM CLI to install (default: `26.05.5`)
 
 ### [Initialize](./initialize/README.md)
 

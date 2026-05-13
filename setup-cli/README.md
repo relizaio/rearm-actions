@@ -21,13 +21,13 @@ steps:
 - uses: relizaio/setup-rearm-cli-action@1.2.1
   with:
     version:
-      26.05.4
+      26.05.5
 ```
 
 ## Inputs
 The actions supports the following inputs:
 
-- `version`: The version of `rearm` to install, defaulting to `26.05.4`
+- `version`: The version of `rearm` to install, defaulting to `26.05.5`
 
 ## Compile
 use ncc to compile
