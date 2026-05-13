@@ -111,7 +111,7 @@ runs:
       if: ${{ inputs.enable_sbom == 'true' }}
       name: Install cdxgen cli
       shell: bash
-      run: npm install -g @cyclonedx/cdxgen@12.2.0 --ignore-scripts
+      run: npm install -g @cyclonedx/cdxgen@12.3.3 --ignore-scripts
     - id: install-cosign
       if: ${{ inputs.enable_public_cosign_sigstore == 'true' }}
       name: Install Cosign
@@ -216,9 +216,7 @@ runs:
         export FETCH_LICENSE=true
         if [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'npm' ]]
         then
-          npm install --global @cyclonedx/cyclonedx-npm@4.2.1 --ignore-scripts
-          npm ci
-          cyclonedx-npm --flatten-components > fs.cdx.bom.json
+          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build --spec-version 1.6 -t npm -o fs.cdx.bom.json
         elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'helm' ]]
         then
           cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecyle build --spec-version 1.6 -t helm -o fs.cdx.bom.json
