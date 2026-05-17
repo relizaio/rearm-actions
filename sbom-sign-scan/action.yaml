@@ -278,7 +278,14 @@ runs:
         # SIGNED_PAYLOAD pair so ReARM can verify the cryptographic
         # attribution downstream. Independent of SBOM generation — runs
         # even when enable_sbom=false. Silent no-op on unsigned commits.
-        if [[ "${{ inputs.extract_commit_signature }}" == 'true' ]]
+        #
+        # Skipped when initialize/action.yaml has already attached the
+        # same pair at getversion time (REARM_SIGNATURE_PRE_ATTACHED=true
+        # written to $GITHUB_ENV by the initialize step). Without that
+        # guard both steps would attach independently — different artifact
+        # UUIDs but identical contents — and the SCE row would end up
+        # with two duplicate signature pairs.
+        if [[ "${{ inputs.extract_commit_signature }}" == 'true' && "$REARM_SIGNATURE_PRE_ATTACHED" != 'true' ]]
         then
           COMMIT_SHA=$(git rev-parse HEAD)
           COMMIT_RAW="./commit-raw.bin"

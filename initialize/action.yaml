@@ -472,6 +472,91 @@ runs:
               [ -n "$PR_ENDPOINT" ] && get_version_args+=("--pr-endpoint" "$PR_ENDPOINT")
             fi
 
+            # Extract the HEAD commit signature BEFORE getversion runs and
+            # forward it via --scearts. This lets component-level CEL gates
+            # that key on sce.signature.state (e.g. "all commits VERIFIED")
+            # see a real verdict at processRelease time — without this the
+            # gate evaluates on a null signature and rejects the release at
+            # create-time, even for properly-signed commits. Mirrors the
+            # same gpgsig-extraction sbom-sign-scan does later in the
+            # pipeline; both paths attaching is idempotent on the backend
+            # (autoVerifyCommitSignatures pairs by signedCommitSha tag, so
+            # duplicate pairs verify to the same verdict).
+            #
+            # Requires CLI ≥ 26.05.6 for `rearm getversion --scearts`. Silent
+            # no-op on unsigned commits.
+            COMMIT_RAW="$(mktemp)"
+            git cat-file commit "$COMMIT_FOR_METADATA" > "$COMMIT_RAW"
+            awk '
+                BEGIN { in_sig = 0; in_hdr = 1 }
+                {
+                    if (in_hdr && $0 == "") {
+                        in_hdr = 0; in_sig = 0; next
+                    }
+                    if (in_hdr) {
+                        if ($0 ~ /^gpgsig /) {
+                            in_sig = 1; sub(/^gpgsig /, "", $0)
+                            print $0 > "./commit-signature.bin"; next
+                        }
+                        if (in_sig && substr($0, 1, 1) == " ") {
+                            sub(/^ /, "", $0)
+                            print $0 > "./commit-signature.bin"; next
+                        }
+                        in_sig = 0
+                    }
+                }
+            ' "$COMMIT_RAW"
+            # The signed payload is the full raw commit object with the
+            # gpgsig header (and its space-indented continuation lines)
+            # stripped — matches what `ssh-keygen -Y verify` / git itself
+            # hashes.
+            awk '
+                BEGIN { in_sig = 0; in_hdr = 1 }
+                {
+                    if (in_hdr && $0 == "") {
+                        in_hdr = 0; in_sig = 0; print; next
+                    }
+                    if (in_hdr) {
+                        if ($0 ~ /^gpgsig /) { in_sig = 1; next }
+                        if (in_sig && substr($0, 1, 1) == " ") next
+                        in_sig = 0; print; next
+                    }
+                    print
+                }
+            ' "$COMMIT_RAW" > ./commit-signed-payload.bin
+            rm -f "$COMMIT_RAW"
+
+            if [ -s ./commit-signature.bin ]; then
+              if head -1 ./commit-signature.bin | grep -q "BEGIN SSH SIGNATURE"; then
+                SIG_FORMAT="SSH"
+              elif head -1 ./commit-signature.bin | grep -q "BEGIN PGP SIGNATURE"; then
+                SIG_FORMAT="GPG"
+              else
+                SIG_FORMAT=""
+              fi
+              if [ -n "$SIG_FORMAT" ]; then
+                INIT_SCEARTS=$(jq -nc --arg sha "$COMMIT_FOR_METADATA" --arg fmt "$SIG_FORMAT" \
+                  '[{"type":"SIGNATURE","filePath":"./commit-signature.bin","displayIdentifier":($sha+".sig"),"tags":[{"key":"signatureSubject","value":"COMMIT"},{"key":"signatureFormat","value":$fmt},{"key":"signedCommitSha","value":$sha}]},{"type":"SIGNED_PAYLOAD","filePath":"./commit-signed-payload.bin","displayIdentifier":($sha+".payload"),"tags":[{"key":"signedCommitSha","value":$sha}]}]')
+                get_version_args+=("--scearts" "$INIT_SCEARTS")
+                # Tell sbom-sign-scan (running later in the same workflow)
+                # that we've already attached the SIGNATURE + SIGNED_PAYLOAD
+                # pair so it skips its own gpgsig extraction. Without this
+                # both steps would attach independently — different artifact
+                # UUIDs but identical contents — and the SCE row would end
+                # up with two duplicate signature pairs. Backend verifies
+                # both to the same verdict so it's harmless functionally,
+                # but it clutters the UI and inflates artifact storage.
+                echo "REARM_SIGNATURE_PRE_ATTACHED=true" >> $GITHUB_ENV
+                echo "Pre-attaching commit signature at getversion ($SIG_FORMAT $COMMIT_FOR_METADATA)"
+              else
+                echo "WARN: extracted gpgsig header but content is neither SSH nor PGP — skipping pre-attach" >&2
+                rm -f ./commit-signature.bin ./commit-signed-payload.bin
+              fi
+            else
+              echo "Commit $COMMIT_FOR_METADATA is unsigned — skipping signature pre-attach"
+              rm -f ./commit-signature.bin ./commit-signed-payload.bin
+            fi
+
             if ! GET_VERSION_OUTPUT=$(rearm "${get_version_args[@]}" 2>&1); then
               echo "ERROR: rearm getversion failed:" >&2
               echo "$GET_VERSION_OUTPUT" >&2
