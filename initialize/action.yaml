@@ -306,15 +306,40 @@ runs:
           # whitespace-bounded — agents must keep `ReARM-Agent` and
           # `ReARM-Agentic-Session` values space-free.
           AGENTIC_TRAILER_FMT='%(trailers:key=ReARM-Agent,key=ReARM-Agentic-Session,unfold,separator=%x20)'
-          COMMIT_MESSAGE=$(git log -1 --pretty="%s ${AGENTIC_TRAILER_FMT}" "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
-          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
+
+          # In a monorepo, HEAD often touches some components and not
+          # others. When it doesn't touch $REPO_PATH, the path-filtered
+          # `git log -1 ... -- $REPO_PATH` resolves to a prior commit —
+          # which means the message/date we report describe a different
+          # SHA than $COMMIT. The backend dedups SCEs by (vcs, commit),
+          # so a sibling job that DID touch the path racing with this one
+          # would produce two addrelease calls with the same commit but
+          # mismatched metadata — and the merge stomps the trailered
+          # message with the untrailered one, breaking signature
+          # attribution.
+          #
+          # Resolve the commit, message, and date as a consistent triple
+          # by snapping commit forward to the same path-filtered ref the
+          # message/date already use. Different components in a monorepo
+          # now get distinct SCEs pinned to whichever SHA last touched
+          # their path; no collision, no merge race.
+          if [ -n "$REPO_PATH" ]; then
+            COMMIT_FOR_METADATA=$(git log -1 --pretty=%H "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
+            [ -z "$COMMIT_FOR_METADATA" ] && COMMIT_FOR_METADATA="$COMMIT"
+          else
+            COMMIT_FOR_METADATA="$COMMIT"
+          fi
+          echo "Commit (for metadata, path-filtered): $COMMIT_FOR_METADATA"
+
+          COMMIT_MESSAGE=$(git log -1 --pretty="%s ${AGENTIC_TRAILER_FMT}" "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
+          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
 
           # Get commits since last release for getversion command
           COMMITS_BASE64=""
           if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
-            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT}" --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
+            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT_FOR_METADATA}" --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
           else
-            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
+            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
           fi
           
           if [ -n "$COMMITS_OUTPUT" ]; then
@@ -328,7 +353,7 @@ runs:
               "-k" "$REARM_API_KEY"
               "-i" "$rearm_api_id"
               "-u" "$REARM_API_URL"
-              "--commit" "$COMMIT"
+              "--commit" "$COMMIT_FOR_METADATA"
               "--vcstype" "git"
               "--vcsuri" "$VCS_URI"
               "--repo-path" "$REPO_PATH"
@@ -394,7 +419,7 @@ runs:
               "-i" "$rearm_api_id"
               "-u" "$REARM_API_URL"
               "-b" "$BRANCH"
-              "--commit" "$COMMIT"
+              "--commit" "$COMMIT_FOR_METADATA"
               "--vcstype" "git"
               "--vcsuri" "$VCS_URI"
               "--repo-path" "$REPO_PATH"
@@ -535,7 +560,7 @@ runs:
         echo "short_version=$SHORT_VERSION" >> $GITHUB_OUTPUT
         echo "build_start=$BUILD_START" >> $GITHUB_OUTPUT
         echo "commit_list=$COMMITS_BASE64" >> $GITHUB_OUTPUT
-        echo "sce_commit=$COMMIT" >> $GITHUB_OUTPUT
+        echo "sce_commit=${COMMIT_FOR_METADATA:-$COMMIT}" >> $GITHUB_OUTPUT
         echo "sce_commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
         echo "sce_commit_date=$COMMIT_DATE" >> $GITHUB_OUTPUT
         echo "sce_vcs_uri=$VCS_URI" >> $GITHUB_OUTPUT
