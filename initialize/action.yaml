@@ -483,16 +483,37 @@ runs:
             FULL_VERSION=$(echo "$GET_VERSION_OUTPUT" | jq -r '.version // empty' 2>/dev/null || echo "")
             SHORT_VERSION=$(echo "$GET_VERSION_OUTPUT" | jq -r '.dockerTagSafeVersion // empty' 2>/dev/null || echo "$FULL_VERSION")
             RELEASE_ALREADY_EXISTS=$(echo "$GET_VERSION_OUTPUT" | jq -r '.releaseAlreadyExists // false' 2>/dev/null || echo "false")
-            
-            echo "Got version from ReARM: $FULL_VERSION"
-            
+            RESOLVED_LIFECYCLE=$(echo "$GET_VERSION_OUTPUT" | jq -r '.lifecycle // empty' 2>/dev/null || echo "")
+
+            echo "Got version from ReARM: $FULL_VERSION (lifecycle: ${RESOLVED_LIFECYCLE:-unknown})"
+
+            # ReARM evaluates component-level release input triggers
+            # synchronously during getversion's saveRelease — so a CEL
+            # gate like `release.agentSessions.exists(s, s.hasFailedPolicy)`
+            # wired to RELEASE_LIFECYCLE_CHANGE → REJECTED has already
+            # transitioned the release before we get here. Detect a
+            # terminal lifecycle in the response and short-circuit the
+            # rest of the pipeline: no point building a container if
+            # the release will never accept it (and a downstream
+            # addrelease would just collide on the V31 dedup gate).
+            #
+            # Requires backend that surfaces `lifecycle` on Version
+            # response. Older backends omit the field, RESOLVED_LIFECYCLE
+            # stays empty, and we fall through unchanged.
+            case "$RESOLVED_LIFECYCLE" in
+              REJECTED|CANCELLED)
+                echo "::warning::ReARM moved release $FULL_VERSION to $RESOLVED_LIFECYCLE during getversion (component policy / trigger). Skipping the rest of this build."
+                DO_BUILD="false"
+                ;;
+            esac
+
             # If release already exists, re-check with the obtained version
             if [ "$RELEASE_ALREADY_EXISTS" = "true" ]; then
               echo "Release already exists, re-checking latest release with obtained version..."
               get_latest_release "$FULL_VERSION" || true
               echo "Updated DO_BUILD: $DO_BUILD"
             fi
-            
+
             echo "Pending release initialized successfully via getversion"
           fi
         else
