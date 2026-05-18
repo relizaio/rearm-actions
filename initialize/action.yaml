@@ -570,32 +570,17 @@ runs:
             RELEASE_ALREADY_EXISTS=$(echo "$GET_VERSION_OUTPUT" | jq -r '.releaseAlreadyExists // false' 2>/dev/null || echo "false")
             RESOLVED_LIFECYCLE=$(echo "$GET_VERSION_OUTPUT" | jq -r '.lifecycle // empty' 2>/dev/null || echo "")
 
-            # CLI ≤ 26.05.5 doesn't request the `lifecycle` field from
-            # getNewVersionProgrammatic, so RESOLVED_LIFECYCLE will be
-            # empty even when a newer backend populates it. Fall back to
-            # a follow-up `getlatestrelease --uptoversion $FULL_VERSION`
-            # which has always selected lifecycle on its release shape.
-            # Drop this branch once setup-cli ships a CLI that selects
-            # lifecycle directly on the getversion mutation.
-            if [ -z "$RESOLVED_LIFECYCLE" ] && [ -n "$FULL_VERSION" ]; then
-              lookup_args=(
-                "getlatestrelease"
-                "-k" "$REARM_API_KEY"
-                "-i" "$rearm_api_id"
-                "-u" "$REARM_API_URL"
-                "--vcsuri" "$VCS_URI"
-                "--repo-path" "$REPO_PATH"
-                "--branch" "$BRANCH"
-                "--uptoversion" "$FULL_VERSION"
-              )
-              [ -n "$COMPONENT" ] && lookup_args+=("--component" "$COMPONENT")
-              if lookup_output=$(rearm "${lookup_args[@]}" 2>/dev/null); then
-                fallback_lifecycle=$(echo "$lookup_output" | jq -r '.lifecycle // empty' 2>/dev/null || echo "")
-                if [ -n "$fallback_lifecycle" ]; then
-                  RESOLVED_LIFECYCLE="$fallback_lifecycle"
-                fi
-              fi
-            fi
+            # If the CLI did not surface `lifecycle` on the getversion
+            # response, do not try to recover it via `getlatestrelease
+            # --uptoversion $FULL_VERSION`. That call resolves to
+            # OssReleaseService.getReleaseBeforeVersion, which returns
+            # the release BEFORE $FULL_VERSION — not the one at it.
+            # When the previous release was REJECTED, the fallback
+            # leaked that lifecycle onto the just-created release,
+            # this step set DO_BUILD=false, finalize never ran, and
+            # the new release was left stuck at PENDING in the DB.
+            # Requires CLI that selects `lifecycle` on
+            # getNewVersionProgrammatic (rearm-cli PR #18).
 
             echo "Got version from ReARM: $FULL_VERSION (lifecycle: ${RESOLVED_LIFECYCLE:-unknown})"
 
