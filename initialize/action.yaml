@@ -423,6 +423,13 @@ runs:
               "--vcstype" "git"
               "--vcsuri" "$VCS_URI"
               "--repo-path" "$REPO_PATH"
+              # Opt in to the lifecycle field on the response so the
+              # terminal-state short-circuit below (REJECTED / CANCELLED)
+              # can fire. The CLI defaults this off so older backends
+              # (pre 2026-05 agentic merge) don't reject the whole
+              # mutation; this action is pinned to the matching CLI +
+              # backend pair, so it's safe to turn on here.
+              "--include-lifecycle"
             )
 
             # `allow_rebuild=true` opts in to the CLI's --rebuild flag,
