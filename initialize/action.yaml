@@ -606,8 +606,8 @@ runs:
             # stays empty, and we fall through unchanged.
             case "$RESOLVED_LIFECYCLE" in
               REJECTED|CANCELLED)
-                echo "::warning::ReARM moved release $FULL_VERSION to $RESOLVED_LIFECYCLE during getversion (component policy / trigger). Skipping the rest of this build."
-                DO_BUILD="false"
+                echo "::error::ReARM moved release $FULL_VERSION to $RESOLVED_LIFECYCLE during getversion (component policy / trigger). Failing the build."
+                exit 1
                 ;;
             esac
 
