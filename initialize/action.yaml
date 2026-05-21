@@ -349,7 +349,26 @@ runs:
           else
             COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
           fi
-          
+
+          # Merge commits are skipped by `git log -- $REPO_PATH` (a merge
+          # introduces no change at the path-filter level), so when
+          # COMMIT_FOR_METADATA is a true merge it never appears in
+          # COMMITS_OUTPUT — the backend then never sees its author /
+          # commitEmail and the head SCE's row stays blank. Prepend the
+          # merge commit's own git-log entry so commits[0] is the head
+          # (matches the backend's head-first invariant) and its
+          # author/email propagate via the adoption block.
+          if [ "${PARENT_COUNT:-1}" -ge 2 ]; then
+            MERGE_ENTRY=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
+            if [ -n "$MERGE_ENTRY" ]; then
+              if [ -n "$COMMITS_OUTPUT" ]; then
+                COMMITS_OUTPUT="$MERGE_ENTRY"$'\n'"$COMMITS_OUTPUT"
+              else
+                COMMITS_OUTPUT="$MERGE_ENTRY"
+              fi
+            fi
+          fi
+
           if [ -n "$COMMITS_OUTPUT" ]; then
             COMMITS_BASE64=$(echo "$COMMITS_OUTPUT" | base64 -w 0 2>/dev/null || echo "$COMMITS_OUTPUT" | base64 2>/dev/null)
           fi
@@ -524,7 +543,17 @@ runs:
             # The signed payload is the full raw commit object with the
             # gpgsig header (and its space-indented continuation lines)
             # stripped — matches what `ssh-keygen -Y verify` / git itself
-            # hashes.
+            # hashes. Must be byte-exact: awk's `print` unconditionally
+            # appends ORS (a newline), which adds a phantom trailing LF
+            # when `git cat-file commit` output doesn't already end with
+            # one. GitHub web-flow signs the canonical (git-stored) bytes
+            # of the merge commit so a 1-byte mismatch surfaces as
+            # `gpg: BAD signature` even with the correct key and the
+            # verifier records INVALID_SIGNATURE. Capture the input's
+            # trailing-LF state, run awk as before, then strip awk's
+            # always-added trailing LF and re-emit only if the input had
+            # one.
+            input_last_byte_hex=$(tail -c1 "$COMMIT_RAW" 2>/dev/null | od -An -tx1 | tr -d ' \n')
             awk '
                 BEGIN { in_sig = 0; in_hdr = 1 }
                 {
@@ -539,6 +568,15 @@ runs:
                     print
                 }
             ' "$COMMIT_RAW" > ./commit-signed-payload.bin
+            # awk always appends a trailing LF on the final record. Strip
+            # it and re-add only when the input itself ended with LF, so
+            # the on-disk bytes match git's canonical commit-object form.
+            if [ -s ./commit-signed-payload.bin ]; then
+              truncate -s -1 ./commit-signed-payload.bin
+              if [ "$input_last_byte_hex" = "0a" ]; then
+                printf '\n' >> ./commit-signed-payload.bin
+              fi
+            fi
             rm -f "$COMMIT_RAW"
 
             if [ -s ./commit-signature.bin ]; then
