@@ -323,7 +323,15 @@ runs:
           # message/date already use. Different components in a monorepo
           # now get distinct SCEs pinned to whichever SHA last touched
           # their path; no collision, no merge race.
-          if [ -n "$REPO_PATH" ]; then
+          # Merge commits implicitly opt out of the monorepo path-snap.
+          # `git log -1 -- $REPO_PATH` skips merge commits by default
+          # (a merge "introduces no change" without -m / --first-parent),
+          # so on a BASE-branch build whose HEAD is a true merge the
+          # snap would walk past the merge into a second-parent
+          # feature-branch commit. That commit isn't the one that
+          # landed on main and shouldn't be the release's sourceCodeEntry.
+          PARENT_COUNT=$(git rev-list --no-walk --parents "$COMMIT" 2>/dev/null | awk '{print NF-1}')
+          if [ -n "$REPO_PATH" ] && [ "${PARENT_COUNT:-1}" -lt 2 ]; then
             COMMIT_FOR_METADATA=$(git log -1 --pretty=%H "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
             [ -z "$COMMIT_FOR_METADATA" ] && COMMIT_FOR_METADATA="$COMMIT"
           else
