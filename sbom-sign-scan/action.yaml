@@ -58,6 +58,10 @@ inputs:
     required: false
     default: 'false'
     description: "Enable SecureSBOM signing of SBOMs by ShiftLeftCyber"
+  extract_commit_signature:
+    required: false
+    default: 'true'
+    description: "When true, extract the HEAD commit's git-level signature (SSH/GPG) and attach it as a SIGNATURE + SIGNED_PAYLOAD scearts entry so ReARM can verify the commit's cryptographic attribution. No-op when the commit is unsigned."
   securesbom_pub_key_id:
     required: false
     description: "Public key id to sign with SecureSBOM by ShiftLeftCyber"
@@ -268,6 +272,78 @@ runs:
             odelarts+=',{"type": "SIGNED_PAYLOAD","filePath": "./deliverable-cosign.sigpl", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "SIGNATURE","filePath": "./deliverable-cosign.sig", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "CERTIFICATE_X_509","filePath": "./deliverable-cosign.cert", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]}'
           fi
           odelarts+=']'
+        fi
+
+        # Extract HEAD commit signature (SSH/GPG) into a SIGNATURE +
+        # SIGNED_PAYLOAD pair so ReARM can verify the cryptographic
+        # attribution downstream. Independent of SBOM generation — runs
+        # even when enable_sbom=false. Silent no-op on unsigned commits.
+        #
+        # Skipped when initialize/action.yaml has already attached the
+        # same pair at getversion time (REARM_SIGNATURE_PRE_ATTACHED=true
+        # written to $GITHUB_ENV by the initialize step). Without that
+        # guard both steps would attach independently — different artifact
+        # UUIDs but identical contents — and the SCE row would end up
+        # with two duplicate signature pairs.
+        if [[ "${{ inputs.extract_commit_signature }}" == 'true' && "$REARM_SIGNATURE_PRE_ATTACHED" != 'true' ]]
+        then
+          COMMIT_SHA=$(git rev-parse HEAD)
+          COMMIT_RAW="./commit-raw.bin"
+          git cat-file commit "$COMMIT_SHA" > "$COMMIT_RAW"
+          # Strip gpgsig header + its space-indented continuation lines
+          # → signature bytes; the rest is the signed payload (the
+          # commit-object body git/ssh-keygen hashes & verifies).
+          awk '
+              BEGIN { in_sig = 0; in_hdr = 1 }
+              {
+                  if (in_hdr && $0 == "") {
+                      in_hdr = 0; in_sig = 0; print; next
+                  }
+                  if (in_hdr) {
+                      if ($0 ~ /^gpgsig /) {
+                          in_sig = 1; sub(/^gpgsig /, "", $0)
+                          print $0 > "./commit-signature.bin"; next
+                      }
+                      if (in_sig && substr($0, 1, 1) == " ") {
+                          sub(/^ /, "", $0)
+                          print $0 > "./commit-signature.bin"; next
+                      }
+                      in_sig = 0; print; next
+                  }
+                  print
+              }
+          ' "$COMMIT_RAW" > ./commit-signed-payload.bin
+          rm "$COMMIT_RAW"
+
+          if [[ -s ./commit-signature.bin ]]; then
+            if head -1 ./commit-signature.bin | grep -q "BEGIN SSH SIGNATURE"; then
+              SIG_FORMAT="SSH"
+            elif head -1 ./commit-signature.bin | grep -q "BEGIN PGP SIGNATURE"; then
+              SIG_FORMAT="GPG"
+            else
+              SIG_FORMAT=""
+            fi
+            if [[ -n "$SIG_FORMAT" ]]; then
+              SIG_ENTRY='{"type":"SIGNATURE","filePath":"./commit-signature.bin","displayIdentifier":"'"${COMMIT_SHA}"'.sig","tags":[{"key":"signatureSubject","value":"COMMIT"},{"key":"signatureFormat","value":"'"${SIG_FORMAT}"'"},{"key":"signedCommitSha","value":"'"${COMMIT_SHA}"'"}]}'
+              PAYLOAD_ENTRY='{"type":"SIGNED_PAYLOAD","filePath":"./commit-signed-payload.bin","displayIdentifier":"'"${COMMIT_SHA}"'.payload","tags":[{"key":"signedCommitSha","value":"'"${COMMIT_SHA}"'"}]}'
+              if [[ -z "$scearts" ]]; then
+                # SBOM gen didn't run — start a fresh array with just
+                # the signature pair.
+                scearts="[${SIG_ENTRY},${PAYLOAD_ENTRY}]"
+              else
+                # SBOM gen already built scearts as a closed array —
+                # strip the trailing ']', append the pair, re-close.
+                scearts="${scearts%]},${SIG_ENTRY},${PAYLOAD_ENTRY}]"
+              fi
+              echo "Attached commit signature: ${SIG_FORMAT} ${COMMIT_SHA}"
+            else
+              echo "WARN: extracted gpgsig header but content is neither SSH nor PGP — skipping" >&2
+              rm ./commit-signature.bin ./commit-signed-payload.bin
+            fi
+          else
+            echo "Commit ${COMMIT_SHA} is unsigned — skipping signature artifacts"
+            rm -f ./commit-signature.bin ./commit-signed-payload.bin
+          fi
         fi
 
         # Output the generated artifacts JSON and purl

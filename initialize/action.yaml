@@ -295,17 +295,80 @@ runs:
           # Without the explicit ref, `git log -1` reads HEAD, which on
           # `pull_request` events is the synthetic merge commit even
           # though we resolved $COMMIT to the PR's actual head SHA.
-          COMMIT_MESSAGE=$(git log -1 --pretty=%s "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
-          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
-          
+          #
+          # We ship only the subject (`%s`), never the full message
+          # body — agent-generated commits routinely have multi-KB
+          # bodies that have no value in the audit log. AI-Agent
+          # attribution trailers are appended onto the subject line
+          # via `%(trailers:key=…,unfold,separator=%x20)` so the
+          # backend's commit-trailer parser can pull them off without
+          # us shipping the rest of the body. Trailer keys are
+          # whitespace-bounded — agents must keep `ReARM-Agent` and
+          # `ReARM-Agentic-Session` values space-free.
+          AGENTIC_TRAILER_FMT='%(trailers:key=ReARM-Agent,key=ReARM-Agentic-Session,unfold,separator=%x20)'
+
+          # In a monorepo, HEAD often touches some components and not
+          # others. When it doesn't touch $REPO_PATH, the path-filtered
+          # `git log -1 ... -- $REPO_PATH` resolves to a prior commit —
+          # which means the message/date we report describe a different
+          # SHA than $COMMIT. The backend dedups SCEs by (vcs, commit),
+          # so a sibling job that DID touch the path racing with this one
+          # would produce two addrelease calls with the same commit but
+          # mismatched metadata — and the merge stomps the trailered
+          # message with the untrailered one, breaking signature
+          # attribution.
+          #
+          # Resolve the commit, message, and date as a consistent triple
+          # by snapping commit forward to the same path-filtered ref the
+          # message/date already use. Different components in a monorepo
+          # now get distinct SCEs pinned to whichever SHA last touched
+          # their path; no collision, no merge race.
+          # Merge commits implicitly opt out of the monorepo path-snap.
+          # `git log -1 -- $REPO_PATH` skips merge commits by default
+          # (a merge "introduces no change" without -m / --first-parent),
+          # so on a BASE-branch build whose HEAD is a true merge the
+          # snap would walk past the merge into a second-parent
+          # feature-branch commit. That commit isn't the one that
+          # landed on main and shouldn't be the release's sourceCodeEntry.
+          PARENT_COUNT=$(git rev-list --no-walk --parents "$COMMIT" 2>/dev/null | awk '{print NF-1}')
+          if [ -n "$REPO_PATH" ] && [ "${PARENT_COUNT:-1}" -lt 2 ]; then
+            COMMIT_FOR_METADATA=$(git log -1 --pretty=%H "$COMMIT" -- "$REPO_PATH" 2>/dev/null || echo "")
+            [ -z "$COMMIT_FOR_METADATA" ] && COMMIT_FOR_METADATA="$COMMIT"
+          else
+            COMMIT_FOR_METADATA="$COMMIT"
+          fi
+          echo "Commit (for metadata, path-filtered): $COMMIT_FOR_METADATA"
+
+          COMMIT_MESSAGE=$(git log -1 --pretty="%s ${AGENTIC_TRAILER_FMT}" "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
+          COMMIT_DATE=$(git log -1 --date=iso-strict --pretty=%ad "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
+
           # Get commits since last release for getversion command
           COMMITS_BASE64=""
           if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
-            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT}" --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
+            COMMITS_OUTPUT=$(git log "${LAST_COMMIT}..${COMMIT_FOR_METADATA}" --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
           else
-            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s|||%an|||%ae" -- "$REPO_PATH" 2>/dev/null || echo "")
+            COMMITS_OUTPUT=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
           fi
-          
+
+          # Merge commits are skipped by `git log -- $REPO_PATH` (a merge
+          # introduces no change at the path-filter level), so when
+          # COMMIT_FOR_METADATA is a true merge it never appears in
+          # COMMITS_OUTPUT — the backend then never sees its author /
+          # commitEmail and the head SCE's row stays blank. Prepend the
+          # merge commit's own git-log entry so commits[0] is the head
+          # (matches the backend's head-first invariant) and its
+          # author/email propagate via the adoption block.
+          if [ "${PARENT_COUNT:-1}" -ge 2 ]; then
+            MERGE_ENTRY=$(git log -1 --date=iso-strict --pretty="%H|||%ad|||%s ${AGENTIC_TRAILER_FMT}|||%an|||%ae" "$COMMIT_FOR_METADATA" 2>/dev/null || echo "")
+            if [ -n "$MERGE_ENTRY" ]; then
+              if [ -n "$COMMITS_OUTPUT" ]; then
+                COMMITS_OUTPUT="$MERGE_ENTRY"$'\n'"$COMMITS_OUTPUT"
+              else
+                COMMITS_OUTPUT="$MERGE_ENTRY"
+              fi
+            fi
+          fi
+
           if [ -n "$COMMITS_OUTPUT" ]; then
             COMMITS_BASE64=$(echo "$COMMITS_OUTPUT" | base64 -w 0 2>/dev/null || echo "$COMMITS_OUTPUT" | base64 2>/dev/null)
           fi
@@ -317,7 +380,7 @@ runs:
               "-k" "$REARM_API_KEY"
               "-i" "$rearm_api_id"
               "-u" "$REARM_API_URL"
-              "--commit" "$COMMIT"
+              "--commit" "$COMMIT_FOR_METADATA"
               "--vcstype" "git"
               "--vcsuri" "$VCS_URI"
               "--repo-path" "$REPO_PATH"
@@ -383,10 +446,17 @@ runs:
               "-i" "$rearm_api_id"
               "-u" "$REARM_API_URL"
               "-b" "$BRANCH"
-              "--commit" "$COMMIT"
+              "--commit" "$COMMIT_FOR_METADATA"
               "--vcstype" "git"
               "--vcsuri" "$VCS_URI"
               "--repo-path" "$REPO_PATH"
+              # Opt in to the lifecycle field on the response so the
+              # terminal-state short-circuit below (REJECTED / CANCELLED)
+              # can fire. The CLI defaults this off so older backends
+              # (pre 2026-05 agentic merge) don't reject the whole
+              # mutation; this action is pinned to the matching CLI +
+              # backend pair, so it's safe to turn on here.
+              "--include-lifecycle"
             )
 
             # `allow_rebuild=true` opts in to the CLI's --rebuild flag,
@@ -436,6 +506,110 @@ runs:
               [ -n "$PR_ENDPOINT" ] && get_version_args+=("--pr-endpoint" "$PR_ENDPOINT")
             fi
 
+            # Extract the HEAD commit signature BEFORE getversion runs and
+            # forward it via --scearts. This lets component-level CEL gates
+            # that key on sce.signature.state (e.g. "all commits VERIFIED")
+            # see a real verdict at processRelease time — without this the
+            # gate evaluates on a null signature and rejects the release at
+            # create-time, even for properly-signed commits. Mirrors the
+            # same gpgsig-extraction sbom-sign-scan does later in the
+            # pipeline; both paths attaching is idempotent on the backend
+            # (autoVerifyCommitSignatures pairs by signedCommitSha tag, so
+            # duplicate pairs verify to the same verdict).
+            #
+            # Requires CLI ≥ 26.05.6 for `rearm getversion --scearts`. Silent
+            # no-op on unsigned commits.
+            COMMIT_RAW="$(mktemp)"
+            git cat-file commit "$COMMIT_FOR_METADATA" > "$COMMIT_RAW"
+            awk '
+                BEGIN { in_sig = 0; in_hdr = 1 }
+                {
+                    if (in_hdr && $0 == "") {
+                        in_hdr = 0; in_sig = 0; next
+                    }
+                    if (in_hdr) {
+                        if ($0 ~ /^gpgsig /) {
+                            in_sig = 1; sub(/^gpgsig /, "", $0)
+                            print $0 > "./commit-signature.bin"; next
+                        }
+                        if (in_sig && substr($0, 1, 1) == " ") {
+                            sub(/^ /, "", $0)
+                            print $0 > "./commit-signature.bin"; next
+                        }
+                        in_sig = 0
+                    }
+                }
+            ' "$COMMIT_RAW"
+            # The signed payload is the full raw commit object with the
+            # gpgsig header (and its space-indented continuation lines)
+            # stripped — matches what `ssh-keygen -Y verify` / git itself
+            # hashes. Must be byte-exact: awk's `print` unconditionally
+            # appends ORS (a newline), which adds a phantom trailing LF
+            # when `git cat-file commit` output doesn't already end with
+            # one. GitHub web-flow signs the canonical (git-stored) bytes
+            # of the merge commit so a 1-byte mismatch surfaces as
+            # `gpg: BAD signature` even with the correct key and the
+            # verifier records INVALID_SIGNATURE. Capture the input's
+            # trailing-LF state, run awk as before, then strip awk's
+            # always-added trailing LF and re-emit only if the input had
+            # one.
+            input_last_byte_hex=$(tail -c1 "$COMMIT_RAW" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+            awk '
+                BEGIN { in_sig = 0; in_hdr = 1 }
+                {
+                    if (in_hdr && $0 == "") {
+                        in_hdr = 0; in_sig = 0; print; next
+                    }
+                    if (in_hdr) {
+                        if ($0 ~ /^gpgsig /) { in_sig = 1; next }
+                        if (in_sig && substr($0, 1, 1) == " ") next
+                        in_sig = 0; print; next
+                    }
+                    print
+                }
+            ' "$COMMIT_RAW" > ./commit-signed-payload.bin
+            # awk always appends a trailing LF on the final record. Strip
+            # it and re-add only when the input itself ended with LF, so
+            # the on-disk bytes match git's canonical commit-object form.
+            if [ -s ./commit-signed-payload.bin ]; then
+              truncate -s -1 ./commit-signed-payload.bin
+              if [ "$input_last_byte_hex" = "0a" ]; then
+                printf '\n' >> ./commit-signed-payload.bin
+              fi
+            fi
+            rm -f "$COMMIT_RAW"
+
+            if [ -s ./commit-signature.bin ]; then
+              if head -1 ./commit-signature.bin | grep -q "BEGIN SSH SIGNATURE"; then
+                SIG_FORMAT="SSH"
+              elif head -1 ./commit-signature.bin | grep -q "BEGIN PGP SIGNATURE"; then
+                SIG_FORMAT="GPG"
+              else
+                SIG_FORMAT=""
+              fi
+              if [ -n "$SIG_FORMAT" ]; then
+                INIT_SCEARTS=$(jq -nc --arg sha "$COMMIT_FOR_METADATA" --arg fmt "$SIG_FORMAT" \
+                  '[{"type":"SIGNATURE","filePath":"./commit-signature.bin","displayIdentifier":($sha+".sig"),"tags":[{"key":"signatureSubject","value":"COMMIT"},{"key":"signatureFormat","value":$fmt},{"key":"signedCommitSha","value":$sha}]},{"type":"SIGNED_PAYLOAD","filePath":"./commit-signed-payload.bin","displayIdentifier":($sha+".payload"),"tags":[{"key":"signedCommitSha","value":$sha}]}]')
+                get_version_args+=("--scearts" "$INIT_SCEARTS")
+                # Tell sbom-sign-scan (running later in the same workflow)
+                # that we've already attached the SIGNATURE + SIGNED_PAYLOAD
+                # pair so it skips its own gpgsig extraction. Without this
+                # both steps would attach independently — different artifact
+                # UUIDs but identical contents — and the SCE row would end
+                # up with two duplicate signature pairs. Backend verifies
+                # both to the same verdict so it's harmless functionally,
+                # but it clutters the UI and inflates artifact storage.
+                echo "REARM_SIGNATURE_PRE_ATTACHED=true" >> $GITHUB_ENV
+                echo "Pre-attaching commit signature at getversion ($SIG_FORMAT $COMMIT_FOR_METADATA)"
+              else
+                echo "WARN: extracted gpgsig header but content is neither SSH nor PGP — skipping pre-attach" >&2
+                rm -f ./commit-signature.bin ./commit-signed-payload.bin
+              fi
+            else
+              echo "Commit $COMMIT_FOR_METADATA is unsigned — skipping signature pre-attach"
+              rm -f ./commit-signature.bin ./commit-signed-payload.bin
+            fi
+
             if ! GET_VERSION_OUTPUT=$(rearm "${get_version_args[@]}" 2>&1); then
               echo "ERROR: rearm getversion failed:" >&2
               echo "$GET_VERSION_OUTPUT" >&2
@@ -447,16 +621,49 @@ runs:
             FULL_VERSION=$(echo "$GET_VERSION_OUTPUT" | jq -r '.version // empty' 2>/dev/null || echo "")
             SHORT_VERSION=$(echo "$GET_VERSION_OUTPUT" | jq -r '.dockerTagSafeVersion // empty' 2>/dev/null || echo "$FULL_VERSION")
             RELEASE_ALREADY_EXISTS=$(echo "$GET_VERSION_OUTPUT" | jq -r '.releaseAlreadyExists // false' 2>/dev/null || echo "false")
-            
-            echo "Got version from ReARM: $FULL_VERSION"
-            
+            RESOLVED_LIFECYCLE=$(echo "$GET_VERSION_OUTPUT" | jq -r '.lifecycle // empty' 2>/dev/null || echo "")
+
+            # If the CLI did not surface `lifecycle` on the getversion
+            # response, do not try to recover it via `getlatestrelease
+            # --uptoversion $FULL_VERSION`. That call resolves to
+            # OssReleaseService.getReleaseBeforeVersion, which returns
+            # the release BEFORE $FULL_VERSION — not the one at it.
+            # When the previous release was REJECTED, the fallback
+            # leaked that lifecycle onto the just-created release,
+            # this step set DO_BUILD=false, finalize never ran, and
+            # the new release was left stuck at PENDING in the DB.
+            # Requires CLI that selects `lifecycle` on
+            # getNewVersionProgrammatic (rearm-cli PR #18).
+
+            echo "Got version from ReARM: $FULL_VERSION (lifecycle: ${RESOLVED_LIFECYCLE:-unknown})"
+
+            # ReARM evaluates component-level release input triggers
+            # synchronously during getversion's saveRelease — so a CEL
+            # gate like `release.agentSessions.exists(s, s.hasFailedPolicy)`
+            # wired to RELEASE_LIFECYCLE_CHANGE → REJECTED has already
+            # transitioned the release before we get here. Detect a
+            # terminal lifecycle in the response and short-circuit the
+            # rest of the pipeline: no point building a container if
+            # the release will never accept it (and a downstream
+            # addrelease would just collide on the V31 dedup gate).
+            #
+            # Requires backend that surfaces `lifecycle` on Version
+            # response. Older backends omit the field, RESOLVED_LIFECYCLE
+            # stays empty, and we fall through unchanged.
+            case "$RESOLVED_LIFECYCLE" in
+              REJECTED|CANCELLED)
+                echo "::error::ReARM moved release $FULL_VERSION to $RESOLVED_LIFECYCLE during getversion (component policy / trigger). Failing the build."
+                exit 1
+                ;;
+            esac
+
             # If release already exists, re-check with the obtained version
             if [ "$RELEASE_ALREADY_EXISTS" = "true" ]; then
               echo "Release already exists, re-checking latest release with obtained version..."
               get_latest_release "$FULL_VERSION" || true
               echo "Updated DO_BUILD: $DO_BUILD"
             fi
-            
+
             echo "Pending release initialized successfully via getversion"
           fi
         else
@@ -524,7 +731,7 @@ runs:
         echo "short_version=$SHORT_VERSION" >> $GITHUB_OUTPUT
         echo "build_start=$BUILD_START" >> $GITHUB_OUTPUT
         echo "commit_list=$COMMITS_BASE64" >> $GITHUB_OUTPUT
-        echo "sce_commit=$COMMIT" >> $GITHUB_OUTPUT
+        echo "sce_commit=${COMMIT_FOR_METADATA:-$COMMIT}" >> $GITHUB_OUTPUT
         echo "sce_commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
         echo "sce_commit_date=$COMMIT_DATE" >> $GITHUB_OUTPUT
         echo "sce_vcs_uri=$VCS_URI" >> $GITHUB_OUTPUT

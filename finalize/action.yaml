@@ -89,6 +89,16 @@ runs:
     - name: Set sce data
       shell: bash
       if: ${{ inputs.send_sce_data == 'true' }}
+      # Bind the commit message to an env var rather than interpolating
+      # ${{ inputs.sce_commit_message }} directly into the bash heredoc.
+      # GitHub Actions expands template expressions BEFORE the shell
+      # parses the script — so a value containing a literal `"` (which
+      # `git revert` produces by default: `Revert "original subject"`)
+      # turns the surrounding bash quoting inside-out and the step dies
+      # with `syntax error near unexpected token`. Reading the value via
+      # $SCE_COMMIT_MESSAGE keeps the contents out of the script source.
+      env:
+        SCE_COMMIT_MESSAGE: ${{ inputs.sce_commit_message }}
       run: |
         # Use commit_list from initialize action if provided
         if [ ! -z "${{inputs.commit_list}}" ]; then
@@ -111,8 +121,14 @@ runs:
 
         echo -n "--commit ${sce_commit} " >> /tmp/reliza/rearm_command
 
-        if [ ! -z "${{inputs.sce_commit_message}}" ]; then
-          echo -n "--commitmessage \"${{inputs.sce_commit_message}}\" " >> /tmp/reliza/rearm_command
+        # The rearm_command file is later passed through `eval $(cat …)`,
+        # which re-tokenises the line on whitespace. To keep the message
+        # as a single word regardless of its contents, single-quote-wrap
+        # after escaping embedded single quotes (the standard
+        # `'\''` dance). Handles double quotes, $, `, etc.
+        if [ -n "$SCE_COMMIT_MESSAGE" ]; then
+          escaped=$(printf "%s" "$SCE_COMMIT_MESSAGE" | sed "s/'/'\\\\''/g")
+          echo -n "--commitmessage '$escaped' " >> /tmp/reliza/rearm_command
         fi
 
         if [ ! -z "${{inputs.sce_commit_date}}" ]; then
