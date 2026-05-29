@@ -5,29 +5,32 @@ This action, sets up the Rearm CLI, [`rearm`](https://github.com/relizaio/rearm)
 
 This action can be run on `ubuntu-latest`, `windows-latest`, and `macos-latest` GitHub Actions runners, and will install and expose a specified version of the `rearm` CLI on the runner environment.
 
+The downloaded CLI zip is verified against a sha256 before it is added to the runner `PATH`. With no inputs, the action installs a pinned default version and checks it against a hardcoded per-platform digest.
+
 ## Usage
 
-Setup the `rearm` CLI:
+Setup the `rearm` CLI (pinned default version, digest verified automatically):
 
 ```yaml
 steps:
-- uses: relizaio/setup-rearm-cli-action@1.2.1
+- uses: relizaio/rearm-actions/setup-cli@<pinned-sha>
 ```
 
-A specific version of the `rearm` CLI can be installed:
+A specific version can be installed, but you **must** also supply the matching `digest` — the sha256 of the `rearm-<version>-<os>-<arch>.zip` for the runner's platform (from the release's `sha256sums.txt`). Supplying `version` without `digest` (or `digest` without `version`) fails the action:
 
 ```yaml
 steps:
-- uses: relizaio/setup-rearm-cli-action@1.2.1
+- uses: relizaio/rearm-actions/setup-cli@<pinned-sha>
   with:
-    version:
-      26.05.5
+    version: 26.05.17
+    digest: f6b71add8984b5d943a88227d14a3ea7bb5f853b318e1f9cd47c99a90b16c183  # linux-amd64
 ```
 
 ## Inputs
-The actions supports the following inputs:
+The action supports the following inputs:
 
-- `version`: The version of `rearm` to install, defaulting to `26.05.5`
+- `version`: The version of `rearm` to install. Optional — defaults to a pinned version that is verified against a hardcoded sha256. If set, `digest` must also be set.
+- `digest`: The sha256 of the `rearm-<version>-<os>-<arch>.zip` for the runner platform, used to verify the download. Required only when overriding `version`; `version` and `digest` must be set together or not at all.
 
 ## Compile
 use ncc to compile

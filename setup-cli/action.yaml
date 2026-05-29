@@ -5,9 +5,18 @@ branding:
   color: 'green'
 inputs:
   version:
-    description: Version of rearm CLI to install
+    description: >-
+      Version of rearm CLI to install. Optional — defaults to a pinned
+      version verified against a hardcoded sha256. If set, you MUST also
+      set `digest` (the sha256 of the matching rearm-<version>-<os>-<arch>.zip
+      for your runner platform); setting one without the other fails.
     required: false
-    default: 26.05.10
+  digest:
+    description: >-
+      sha256 of the rearm-<version>-<os>-<arch>.zip for your runner
+      platform, used to verify the download. Required only when overriding
+      `version`; `version` and `digest` must be set together or not at all.
+    required: false
 runs:
   using: node24
   main: dist/index.js
