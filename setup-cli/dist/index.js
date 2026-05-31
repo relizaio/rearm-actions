@@ -118,7 +118,7 @@ const os = __nccwpck_require__(857);
 // does not override `version` (+ `digest`). Kept in code rather than as
 // an action.yaml input default so the override rule can distinguish
 // "not set" from "set to the default" — see setup() in ../index.js.
-const DEFAULT_VERSION = '26.05.17';
+const DEFAULT_VERSION = '26.05.20';
 
 // sha256 of each published install zip for DEFAULT_VERSION, keyed by the
 // zip filename. Source: the sha256sums.txt published alongside the
@@ -127,20 +127,20 @@ const DEFAULT_VERSION = '26.05.17';
 // they must also pass the matching `digest` (both or neither — enforced
 // in setup()), so this map only needs to cover the pinned default.
 const DIGESTS = {
-  'rearm-26.05.17-darwin-amd64.zip':  '9b64c185ac1fd6ddba3702b14c46b6494fd2422f2b343343e3cb90bfe95da68a',
-  'rearm-26.05.17-darwin-arm64.zip':  'a5be0e7dbf051a231700ed2620626761a93eaec8a259285aea4315382772054f',
-  'rearm-26.05.17-freebsd-386.zip':   '9647ce9a09119cdf202131f997430c6b30efa89662c76c63251003fe6d6c2db0',
-  'rearm-26.05.17-freebsd-amd64.zip': '39f62f0ab4457eb5b863b0954ce5ddab47503c92b8b5ab30d640e64d3315a3a4',
-  'rearm-26.05.17-freebsd-arm.zip':   '26b0c98a77aebac24d46e0cd1d22c256dcebc275c61cb2e4a056973c4be5f915',
-  'rearm-26.05.17-linux-386.zip':     '71e24480b26689201195af913a696f253ee52e556f8dd5e56e31cd268c12af22',
-  'rearm-26.05.17-linux-amd64.zip':   'f6b71add8984b5d943a88227d14a3ea7bb5f853b318e1f9cd47c99a90b16c183',
-  'rearm-26.05.17-linux-arm.zip':     '1fafefb0b09864acb3cbb889ed585a1a259eb3de9375f6485fc64dae75cf5f04',
-  'rearm-26.05.17-linux-arm64.zip':   'eddc80b64cc84831f676f21bb2d95169896722e5bfe60dbfd9897b646e7d9e59',
-  'rearm-26.05.17-openbsd-386.zip':   '87a8d84f1064e21669cd6a0871216fab5c0760543e16dec2324883df23c69c1b',
-  'rearm-26.05.17-openbsd-amd64.zip': 'b1926909c8032ee4f9b9fb53e8f948e4ff718a3510cbd37da960207a7fc34c79',
-  'rearm-26.05.17-solaris-amd64.zip': 'ef38a21b3b7cdb8da3e799816620084cf0802508c843a62dc9731a266873bdf0',
-  'rearm-26.05.17-windows-386.zip':   '3f075983f3fd27e30ee68862dffdfcea03a110d881560d9a761d906b05a80a74',
-  'rearm-26.05.17-windows-amd64.zip': 'af75ecf2b0d8267d27bacc762cbce9ab7621b962f93373e301c91e24baf2356f',
+  'rearm-26.05.20-darwin-amd64.zip':  '7bcb9af4a1a57ffeeeecc36fec808ad50ad8ea05cd59b56f95e2bddf1bf03b0e',
+  'rearm-26.05.20-darwin-arm64.zip':  '611600bb589448ab786e2706eb634dc74a67448e4c5a9eb34fc3ad53d23ac754',
+  'rearm-26.05.20-freebsd-386.zip':   '43a32aa8762ed1c92b12a3d91ac0431d692fa089b5a134e1fe4d805a6a6d3a93',
+  'rearm-26.05.20-freebsd-amd64.zip': '8e207e38bdda46c68c7d46346265c86f70b0060118a3c65e61e1a072cc659bd8',
+  'rearm-26.05.20-freebsd-arm.zip':   '1b15b284303ea3d1e052e9c05d022c662eba8b3b6b5b49fb191e8917b1cb707d',
+  'rearm-26.05.20-linux-386.zip':     '1d436d8b87686087aea68145bea5886f4f8cb03b9d73dbcc03317c0f5c69ec93',
+  'rearm-26.05.20-linux-amd64.zip':   '779659953b95ee8271f64cfdec451a830f9d1116715a3df4b3151ca18846b3f2',
+  'rearm-26.05.20-linux-arm.zip':     '37fdccf6ea5e2075e842283573f4db6977c856b59ec89380fbcac47ea0064614',
+  'rearm-26.05.20-linux-arm64.zip':   'bac3c1ec8677013f6f8790111d1825ac56e3ebc2664e4f4d8ce7bf4e804723e5',
+  'rearm-26.05.20-openbsd-386.zip':   '219164a1d28c9d934b5f8d7ebde8aadea9a6619ac0d24895dca24f413903e352',
+  'rearm-26.05.20-openbsd-amd64.zip': '942e7ec22ff051e64f0d3a5476dca0e8c3fa12a886a4744da9d8ce5ad24cefa6',
+  'rearm-26.05.20-solaris-amd64.zip': '685c0cdb00cd732b7745eb19f8c1aacbc52395f03e7be4d961841085b8b77d33',
+  'rearm-26.05.20-windows-386.zip':   '7ed10d6bf7962b8f02ccab512cc426d5eabd9b92b602609c0321990efe67e66e',
+  'rearm-26.05.20-windows-amd64.zip': '840b504781ed5f627b34ada958a912f82b307e7b45d46af42b65928bd8bdb700',
 };
 
 // arch in [arm, x32, x64...] (https://nodejs.org/api/os.html#os_os_arch)

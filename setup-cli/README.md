@@ -22,8 +22,8 @@ A specific version can be installed, but you **must** also supply the matching `
 steps:
 - uses: relizaio/rearm-actions/setup-cli@<pinned-sha>
   with:
-    version: 26.05.17
-    digest: f6b71add8984b5d943a88227d14a3ea7bb5f853b318e1f9cd47c99a90b16c183  # linux-amd64
+    version: 26.05.20
+    digest: 779659953b95ee8271f64cfdec451a830f9d1116715a3df4b3151ca18846b3f2  # linux-amd64
 ```
 
 ## Inputs
