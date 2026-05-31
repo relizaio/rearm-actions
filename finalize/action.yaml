@@ -54,10 +54,6 @@ inputs:
   component:
     description: "Component UUID (optional)"
     required: false
-  finalize_release:
-    description: "Finalize the release after adding it (true/false)"
-    required: false
-    default: 'true'
   repo_path:
     description: "Repository path relative to workspace root"
     required: false
@@ -220,23 +216,7 @@ runs:
 
         # Extract UUID from JSON output using jq
         release_uuid=$(echo "$rearm_output" | jq -r '.data.addReleaseProgrammatic.uuid // empty')
-        echo "Extracted release UUID: $release_uuid"
-
-        # Conditionally finalize release
-        if [[ "${{ inputs.finalize_release }}" == 'true' && -n "$release_uuid" ]]; then
-          echo "Finalizing release with UUID: $release_uuid"
-          if ! finalizer_output=$(rearm releasefinalizer --releaseid "$release_uuid" -u '${{ inputs.rearm_api_url }}' -i '${{ inputs.rearm_api_id }}' -k '${{ inputs.rearm_api_key }}' 2>&1); then
-            exit_code=$?
-            echo "ERROR: rearm releasefinalizer failed (exit code $exit_code):" >&2
-            echo "$finalizer_output" >&2
-            exit $exit_code
-          fi
-          echo "$finalizer_output"
-        else
-          echo "Skipping release finalization."
-        fi
-        echo "completed sending release metadata"
-
+        echo "Completed sending release metadata. Release UUID: $release_uuid"
     - name: Fail build if rearm status is rejected
       shell: bash
       run: |
