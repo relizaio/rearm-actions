@@ -115,7 +115,7 @@ runs:
       if: ${{ inputs.enable_sbom == 'true' }}
       name: Install cdxgen cli
       shell: bash
-      run: npm install -g @cyclonedx/cdxgen@12.3.3 --ignore-scripts
+      run: npm install -g @cyclonedx/cdxgen@12.5.0 --ignore-scripts
     - id: install-cosign
       if: ${{ inputs.enable_public_cosign_sigstore == 'true' }}
       name: Install Cosign
