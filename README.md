@@ -12,6 +12,7 @@ This repository contains composable actions that work together to manage the com
 | [initialize](./initialize) | Initialize ReARM release flow - checks for changes, creates pending releases, syncs branches, optionally scans for invisible/trojan-source characters |
 | [sbom-sign-scan](./sbom-sign-scan) | Generate SBOMs, perform signing, and run CodeQL analysis |
 | [finalize](./finalize) | Submit release metadata and finalize the release on ReARM |
+| [add-multi-release](./add-multi-release) | Submit several releases in one all-or-nothing batch, firing product auto-integration once per affected feature set |
 
 ## Quick Start
 
@@ -121,7 +122,7 @@ jobs:
 Installs the ReARM CLI (`rearm`) on GitHub Actions runners.
 
 **Key inputs:**
-- `version` - Version of ReARM CLI to install (default: `26.05.5`)
+- `version` - Version of ReARM CLI to install (default: `26.05.20`)
 
 ### [Initialize](./initialize/README.md)
 
@@ -150,6 +151,18 @@ Submits release metadata to ReARM and optionally finalizes the release.
 - SCE data from initialize action
 - Artifact JSON from sbom-sign-scan action
 - Build lifecycle (`DRAFT`, `ASSEMBLED` or `REJECTED`)
+
+### [Add Multi-Release](./add-multi-release/README.md)
+
+Submits several releases to ReARM in one all-or-nothing batch (`rearm
+addreleases`). Unlike running `finalize`/`addrelease` once per component, the
+backend fires product auto-integration only **once per affected feature set**
+for the whole batch — use it when a CI run builds several component releases
+at once. Provide the batch as inline `releases` JSON or via an `infile` path.
+
+**Key inputs:**
+- `releases` - JSON array of release objects (`ReleaseInputProg` shape), or
+- `infile` - path to a JSON file with the array (takes precedence)
 
 ## Minimal Example (Without SBOM)
 

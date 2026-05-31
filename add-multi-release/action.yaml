@@ -1,0 +1,95 @@
+name: 'ReARM Add Multi-Release'
+description: 'Submit several ReARM releases in one all-or-nothing batch (rearm addreleases) so product auto-integration fires once per affected feature set, not once per release.'
+branding:
+  icon: 'layers'
+  color: 'green'
+inputs:
+  rearm_api_id:
+    description: "ReARM API Key ID"
+    required: true
+  rearm_api_key:
+    description: "ReARM API Key"
+    required: true
+  rearm_api_url:
+    description: "ReARM API URL"
+    required: false
+    default: 'https://demo.rearmhq.com'
+  releases:
+    description: >-
+      JSON array of release objects, each shaped like the single-release
+      addrelease input (ReleaseInputProg). Artifacts reference local files
+      via their "filePath" field, resolved relative to working_directory —
+      the CLI reads and uploads each file. Provide this OR infile; if both
+      are set, infile wins.
+    required: false
+  infile:
+    description: >-
+      Path (relative to working_directory) to a JSON file containing the
+      release array. Takes precedence over `releases`. Use when an earlier
+      step has already written the batch to disk.
+    required: false
+  stripbom:
+    description: "Set to 'false' to disable BOM stripping for digest matching; applied to every artifact in the batch."
+    required: false
+    default: 'true'
+  working_directory:
+    description: >-
+      Process working directory the CLI runs from — the base every artifact
+      "filePath" (and a relative `infile`) is resolved against. This is NOT
+      a per-release repository path: each release object carries its own
+      `repoPath` (alongside `vcsUri`) inside the JSON to identify its
+      component in a monorepo. Default: the workspace root.
+    required: false
+    default: "."
+runs:
+  using: "composite"
+  steps:
+    - name: Submit release batch to ReARM
+      shell: bash
+      # Inputs are bound to env vars rather than interpolated into the script
+      # body: GitHub Actions expands ${{ }} BEFORE bash parses the script, so a
+      # `releases` value (JSON, always contains `"`) interpolated inline would
+      # break the shell quoting. Reading via $RELEASES_JSON keeps the contents
+      # out of the script source. Credentials live only on the command line at
+      # run time and are never written to disk.
+      env:
+        REARM_API_ID: ${{ inputs.rearm_api_id }}
+        REARM_API_KEY: ${{ inputs.rearm_api_key }}
+        REARM_API_URL: ${{ inputs.rearm_api_url }}
+        RELEASES_JSON: ${{ inputs.releases }}
+        INFILE_INPUT: ${{ inputs.infile }}
+        STRIPBOM: ${{ inputs.stripbom }}
+        WORKING_DIRECTORY: ${{ inputs.working_directory }}
+      run: |
+        cd "$WORKING_DIRECTORY"
+
+        infile="$INFILE_INPUT"
+        if [[ -z "$infile" ]]; then
+          if [[ -z "$RELEASES_JSON" || "$RELEASES_JSON" == "[]" ]]; then
+            echo "ERROR: provide either the 'infile' path or a non-empty 'releases' JSON array." >&2
+            exit 1
+          fi
+          mkdir -p /tmp/reliza
+          infile=/tmp/reliza/addreleases.json
+          printf '%s' "$RELEASES_JSON" > "$infile"
+        fi
+
+        if [[ ! -f "$infile" ]]; then
+          echo "ERROR: release batch file not found: $infile" >&2
+          exit 1
+        fi
+
+        if rearm_output=$(rearm addreleases --infile "$infile" --stripbom "$STRIPBOM" -u "$REARM_API_URL" -i "$REARM_API_ID" -k "$REARM_API_KEY" 2>&1); then
+          echo "Success: $rearm_output"
+        else
+          exit_code=$?
+          echo "ERROR: rearm addreleases failed (exit code $exit_code):" >&2
+          echo "$rearm_output" >&2
+          exit $exit_code
+        fi
+        echo "completed sending release batch metadata"
+
+    - name: Cleanup batch tempfile
+      if: ${{ always() && inputs.infile == '' }}
+      shell: bash
+      run: rm -f /tmp/reliza/addreleases.json
