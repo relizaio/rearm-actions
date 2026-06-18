@@ -150,14 +150,17 @@ runs:
         purl="${INPUTS_PURL}"
         echo "deliverable purl=$purl"
 
-        # Add scearts if provided and not empty
-        scearts='${INPUTS_SCEARTS}'
+        # Add scearts if provided and not empty.
+        # Double quotes (not single) so the env var actually expands; a
+        # double-quoted parameter expansion captures the JSON verbatim and is
+        # NOT re-scanned, so any `$`/backtick inside the JSON stays literal.
+        scearts="${INPUTS_SCEARTS}"
         if [[ -n "$scearts" && "$scearts" != "" && "$scearts" != "[]" ]]; then
           echo -n "--scearts '${scearts}' " >> /tmp/reliza/rearm_command
         fi
 
-        # Add odelartsjson if provided and not empty
-        odelartsjson='${INPUTS_ODELARTSJSON}'
+        # Add odelartsjson if provided and not empty (same double-quote rule)
+        odelartsjson="${INPUTS_ODELARTSJSON}"
         if [[ -n "$odelartsjson" && "$odelartsjson" != "" && "$odelartsjson" != "[]" ]]; then
           echo -n "--odelartsjson '${odelartsjson}' " >> /tmp/reliza/rearm_command
         fi
@@ -202,9 +205,11 @@ runs:
         # PR_NUMBER is empty on non-PR events. Requires CLI ≥ 26.05.5.
         PR_NUMBER='${{ github.event.pull_request.number }}'
         if [ -n "$PR_NUMBER" ]; then
-          PR_TITLE='${GITHUB_EVENT_PULL_REQUEST_TITLE}'
-          PR_TARGET_BRANCH='${GITHUB_EVENT_PULL_REQUEST_BASE_REF}'
-          PR_ENDPOINT='${GITHUB_EVENT_PULL_REQUEST_HTML_URL}'
+          # Double quotes so the env vars expand (single quotes would forward
+          # the literal "${GITHUB_EVENT_...}" placeholders to the CLI).
+          PR_TITLE="${GITHUB_EVENT_PULL_REQUEST_TITLE}"
+          PR_TARGET_BRANCH="${GITHUB_EVENT_PULL_REQUEST_BASE_REF}"
+          PR_ENDPOINT="${GITHUB_EVENT_PULL_REQUEST_HTML_URL}"
           echo -n "--pr-identity ${PR_NUMBER} --pr-state OPEN " >> /tmp/reliza/rearm_command
           [ -n "$PR_TITLE" ] && echo -n "--pr-title \"${PR_TITLE}\" " >> /tmp/reliza/rearm_command
           [ -n "$PR_TARGET_BRANCH" ] && echo -n "--pr-target-branch-name ${PR_TARGET_BRANCH} " >> /tmp/reliza/rearm_command

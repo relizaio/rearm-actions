@@ -190,12 +190,12 @@ runs:
             curl --location "${INPUTS_SECURESBOM_HOST}/api/v1/sbom/sign?pretty=false" \
               --header "x-api-key: ${INPUTS_SECURESBOM_API_KEY}" \
               --form "sbom=@\"${bom_file}.tmp\"" \
-              --form 'key_id="${INPUTS_SECURESBOM_PUB_KEY_ID}"' > "${bom_file}"
+              --form "key_id=\"${INPUTS_SECURESBOM_PUB_KEY_ID}\"" > "${bom_file}"
             rm "${bom_file}.tmp"
 
             curl --location "${INPUTS_SECURESBOM_HOST}/api/v1/keys/public?key_id=${INPUTS_SECURESBOM_PUB_KEY_ID}&format=pem" \
               --header "x-api-key: ${INPUTS_SECURESBOM_API_KEY}" > "./${prefix}-securesbom-public-key.pem"
-            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"${INPUTS_SECURESBOM_PUB_KEY_ID}"}]}'
+            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}]}'
             has_artifacts=true
           fi
 
@@ -264,7 +264,7 @@ runs:
           # Add CodeQL SARIF artifact if enabled
           if [[ ${INPUTS_ENABLE_CODEQL} == 'true' ]]
           then
-            scearts+=',{"type": "CODE_SCANNING_RESULT","filePath": "./codeql-results/${INPUTS_CODEQL_LANGUAGE}.sarif"}'
+            scearts+=',{"type": "CODE_SCANNING_RESULT","filePath": "./codeql-results/'"${INPUTS_CODEQL_LANGUAGE}"'.sarif"}'
           fi
 
           scearts+=']'
