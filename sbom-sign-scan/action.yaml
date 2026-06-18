@@ -108,9 +108,14 @@ runs:
       shell: bash
       if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' }}
       run: |
-        cd ${{ inputs.repo_path }}
-        docker pull ${{inputs.image_full_name}}@${{inputs.image_digest}}
-        docker save -o docker-${{inputs.rearm_short_version}}.tar ${{inputs.image_full_name}}@${{inputs.image_digest}} 
+        cd ${INPUTS_REPO_PATH}
+        docker pull ${INPUTS_IMAGE_FULL_NAME}@${INPUTS_IMAGE_DIGEST}
+        docker save -o docker-${INPUTS_REARM_SHORT_VERSION}.tar ${INPUTS_IMAGE_FULL_NAME}@${INPUTS_IMAGE_DIGEST}
+      env:
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
+        INPUTS_IMAGE_FULL_NAME: ${{inputs.image_full_name}}
+        INPUTS_IMAGE_DIGEST: ${{inputs.image_digest}}
+        INPUTS_REARM_SHORT_VERSION: ${{inputs.rearm_short_version}} 
     - id: install-cdxgen
       if: ${{ inputs.enable_sbom == 'true' }}
       name: Install cdxgen cli
@@ -125,8 +130,12 @@ runs:
       name: Sign container deliverable with cosign
       shell: bash
       run: |
-        cd ${{ inputs.repo_path }}
-        cosign sign -y --output-payload deliverable-cosign.sigpl --output-signature deliverable-cosign.sig --output-certificate deliverable-cosign.cert ${{inputs.image_full_name}}@${{inputs.image_digest}}
+        cd ${INPUTS_REPO_PATH}
+        cosign sign -y --output-payload deliverable-cosign.sigpl --output-signature deliverable-cosign.sig --output-certificate deliverable-cosign.cert ${INPUTS_IMAGE_FULL_NAME}@${INPUTS_IMAGE_DIGEST}
+      env:
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
+        INPUTS_IMAGE_FULL_NAME: ${{inputs.image_full_name}}
+        INPUTS_IMAGE_DIGEST: ${{inputs.image_digest}}
     - name: Initialize CodeQL
       if: ${{ inputs.enable_codeql == 'true' && inputs.codeql_language != 'custom'}}
       uses: github/codeql-action/init@c43362b91a940600cde2ebae39ec7a35ad66bdc0 # CodeQL Bundle v2.23.8
@@ -137,12 +146,15 @@ runs:
       if: ${{ inputs.enable_codeql == 'true' && inputs.codeql_language == 'custom'}}
       shell: bash
       run: |
-        cd ${{ inputs.repo_path }}
+        cd ${INPUTS_REPO_PATH}
         mkdir codeql-results
         docker build -t sarif-container -f Dockerfile.sarif .
         docker run -d --name sarif-container --rm --entrypoint sleep sarif-container 60
         sleep 3
-        docker cp sarif-container:/sarif/results.sarif ./codeql-results/${{inputs.codeql_language}}.sarif
+        docker cp sarif-container:/sarif/results.sarif ./codeql-results/${INPUTS_CODEQL_LANGUAGE}.sarif
+      env:
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
+        INPUTS_CODEQL_LANGUAGE: ${{inputs.codeql_language}}
     - name: Run CodeQL
       if: ${{ inputs.enable_codeql == 'true' && inputs.codeql_language != 'custom'}}
       uses: github/codeql-action/analyze@c43362b91a940600cde2ebae39ec7a35ad66bdc0 # CodeQL Bundle v2.23.8
@@ -153,12 +165,15 @@ runs:
       if: ${{ inputs.enable_codeql == 'true' }}
       shell: bash
       run: |
-        du -h ${{ inputs.repo_path }}/codeql-results/${{inputs.codeql_language}}.sarif
+        du -h ${INPUTS_REPO_PATH}/codeql-results/${INPUTS_CODEQL_LANGUAGE}.sarif
+      env:
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
+        INPUTS_CODEQL_LANGUAGE: ${{inputs.codeql_language}}
     - id: generate-artifacts
       name: Generate SBOM artifacts
       shell: bash
       run: |
-        cd ${{ inputs.repo_path }}
+        cd ${INPUTS_REPO_PATH}
 
         # Function to sign SBOM and build artifacts JSON
         # Usage: sign_sbom <bom_file> <output_prefix>
@@ -170,22 +185,22 @@ runs:
           SIGN_RESULT=""
 
           # Sign with SecureSBOM by ShiftLeftCyber if enabled
-          if [[ "${{ inputs.enable_securesbom }}" == 'true' ]]; then
+          if [[ "${INPUTS_ENABLE_SECURESBOM}" == 'true' ]]; then
             mv "${bom_file}" "${bom_file}.tmp"
-            curl --location "${{ inputs.securesbom_host }}/api/v1/sbom/sign?pretty=false" \
-              --header "x-api-key: ${{ inputs.securesbom_api_key }}" \
+            curl --location "${INPUTS_SECURESBOM_HOST}/api/v1/sbom/sign?pretty=false" \
+              --header "x-api-key: ${INPUTS_SECURESBOM_API_KEY}" \
               --form "sbom=@\"${bom_file}.tmp\"" \
-              --form 'key_id="${{ inputs.securesbom_pub_key_id }}"' > "${bom_file}"
+              --form 'key_id="${INPUTS_SECURESBOM_PUB_KEY_ID}"' > "${bom_file}"
             rm "${bom_file}.tmp"
 
-            curl --location "${{ inputs.securesbom_host }}/api/v1/keys/public?key_id=${{ inputs.securesbom_pub_key_id }}&format=pem" \
-              --header "x-api-key: ${{ inputs.securesbom_api_key }}" > "./${prefix}-securesbom-public-key.pem"
-            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"${{ inputs.securesbom_pub_key_id }}"}]}'
+            curl --location "${INPUTS_SECURESBOM_HOST}/api/v1/keys/public?key_id=${INPUTS_SECURESBOM_PUB_KEY_ID}&format=pem" \
+              --header "x-api-key: ${INPUTS_SECURESBOM_API_KEY}" > "./${prefix}-securesbom-public-key.pem"
+            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"${INPUTS_SECURESBOM_PUB_KEY_ID}"}]}'
             has_artifacts=true
           fi
 
           # Add cosign artifacts if enabled
-          if [[ "${{ inputs.enable_public_cosign_sigstore }}" == 'true' ]]; then
+          if [[ "${INPUTS_ENABLE_PUBLIC_COSIGN_SIGSTORE}" == 'true' ]]; then
             cosign sign-blob -y --output-signature "./${prefix}-cosign.sig" --output-certificate "./${prefix}-cosign.cert" "${bom_file}"
             if [[ $has_artifacts == true ]]; then
               SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-cosign.sig", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "CERTIFICATE_X_509","filePath": "./'"${prefix}"'-cosign.cert", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]}'
@@ -205,8 +220,8 @@ runs:
         purl=""
 
         # Establish purl for CONTAINER type
-        if [[ "${{inputs.deliverable_type}}" == 'CONTAINER' ]]; then
-          url4purl=oci://${{inputs.image_full_name}}:${{inputs.rearm_short_version}}
+        if [[ "${INPUTS_DELIVERABLE_TYPE}" == 'CONTAINER' ]]; then
+          url4purl=oci://${INPUTS_IMAGE_FULL_NAME}:${INPUTS_REARM_SHORT_VERSION}
           docker pull registry.relizahub.com/library/url2purl-cli:25.07.0@sha256:05f849cfedbc31c6c8d11819e42efb4eb5e95198696978ca1ad84b010d52e952
           purl=$(docker run --rm registry.relizahub.com/library/url2purl-cli:25.07.0@sha256:05f849cfedbc31c6c8d11819e42efb4eb5e95198696978ca1ad84b010d52e952 $url4purl)
           echo "deliverable purl=$purl"
@@ -218,26 +233,26 @@ runs:
 
         # Generate SBOMs if Enabled
         export FETCH_LICENSE=true
-        if [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'npm' ]]
+        if [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'npm' ]]
         then
-          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build --spec-version 1.6 -t npm -o fs.cdx.bom.json
-        elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'helm' ]]
+          cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t npm -o fs.cdx.bom.json
+        elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'helm' ]]
         then
-          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecyle build --spec-version 1.6 -t helm -o fs.cdx.bom.json
-        elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'go' ]]
+          cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecyle build --spec-version 1.6 -t helm -o fs.cdx.bom.json
+        elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'go' ]]
         then      
-          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build --spec-version 1.6 -t go -o fs.cdx.bom.json
-        elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'other' ]]
+          cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t go -o fs.cdx.bom.json
+        elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'other' ]]
         then      
-          cdxgen ./ --project-version "${{ inputs.rearm_full_version }}" --lifecycle build --spec-version 1.6 -o fs.cdx.bom.json
-        elif [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} == 'custom' ]]
+          cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -o fs.cdx.bom.json
+        elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'custom' ]]
         then
-          docker build -t sbom-container -f Dockerfile.sbom --build-arg VERSION="${{inputs.rearm_full_version}}" .
+          docker build -t sbom-container -f Dockerfile.sbom --build-arg VERSION="${INPUTS_REARM_FULL_VERSION}" .
           docker run -d --name sbom-container --rm --entrypoint sleep sbom-container 60
           sleep 3
           docker cp sbom-container:/sbom/sbom.json ./fs.cdx.bom.json
         fi
-        if [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.source_code_sbom_type}} != 'none' ]]
+        if [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} != 'none' ]]
         then
           du -h ./fs.cdx.bom.json
 
@@ -247,19 +262,19 @@ runs:
           scearts='[{"bomFormat": "CYCLONEDX","type": "BOM","filePath": "./fs.cdx.bom.json"'"${SIGN_RESULT}"'}'
 
           # Add CodeQL SARIF artifact if enabled
-          if [[ ${{ inputs.enable_codeql }} == 'true' ]]
+          if [[ ${INPUTS_ENABLE_CODEQL} == 'true' ]]
           then
-            scearts+=',{"type": "CODE_SCANNING_RESULT","filePath": "./codeql-results/${{inputs.codeql_language}}.sarif"}'
+            scearts+=',{"type": "CODE_SCANNING_RESULT","filePath": "./codeql-results/${INPUTS_CODEQL_LANGUAGE}.sarif"}'
           fi
 
           scearts+=']'
         fi
 
-        if [[ ${{inputs.enable_sbom}} == 'true' && ${{inputs.deliverable_type}} == 'CONTAINER' ]]
+        if [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_DELIVERABLE_TYPE} == 'CONTAINER' ]]
         then
           export FETCH_LICENSE=false
           pip install blint==3.1.2
-          cdxgen docker-${{inputs.rearm_short_version}}.tar -t docker --lifecycle build --project-version "${{ inputs.rearm_full_version }}" --spec-version 1.6 -o docker.cdx.bom.raw.json
+          cdxgen docker-${INPUTS_REARM_SHORT_VERSION}.tar -t docker --lifecycle build --project-version "${INPUTS_REARM_FULL_VERSION}" --spec-version 1.6 -o docker.cdx.bom.raw.json
           du -h ./docker.cdx.bom.raw.json
           rearm bomutils fixpurl -f ./docker.cdx.bom.raw.json -o ./docker.cdx.bom.json --newpurl "${purl}"
 
@@ -268,7 +283,7 @@ runs:
           odelarts='[{"bomFormat": "CYCLONEDX","type": "BOM","filePath": "./docker.cdx.bom.json"'"${SIGN_RESULT}"'}'
 
           # Add deliverable cosign artifacts if enabled
-          if [[ ${{ inputs.enable_public_cosign_sigstore}} == 'true' ]]; then
+          if [[ ${INPUTS_ENABLE_PUBLIC_COSIGN_SIGSTORE} == 'true' ]]; then
             odelarts+=',{"type": "SIGNED_PAYLOAD","filePath": "./deliverable-cosign.sigpl", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "SIGNATURE","filePath": "./deliverable-cosign.sig", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]},{"type": "CERTIFICATE_X_509","filePath": "./deliverable-cosign.cert", "tags":[{"key":"io.reliza.signing_platform","value":"COSIGN"}]}'
           fi
           odelarts+=']'
@@ -285,7 +300,7 @@ runs:
         # guard both steps would attach independently — different artifact
         # UUIDs but identical contents — and the SCE row would end up
         # with two duplicate signature pairs.
-        if [[ "${{ inputs.extract_commit_signature }}" == 'true' && "$REARM_SIGNATURE_PRE_ATTACHED" != 'true' ]]
+        if [[ "${INPUTS_EXTRACT_COMMIT_SIGNATURE}" == 'true' && "$REARM_SIGNATURE_PRE_ATTACHED" != 'true' ]]
         then
           COMMIT_SHA=$(git rev-parse HEAD)
           COMMIT_RAW="./commit-raw.bin"
@@ -354,3 +369,19 @@ runs:
         echo "Generated scearts: ${scearts}"
         echo "Generated odelartsjson: ${odelarts}"
         echo "Generated purl: ${purl}"
+      env:
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
+        INPUTS_ENABLE_SECURESBOM: ${{ inputs.enable_securesbom }}
+        INPUTS_SECURESBOM_HOST: ${{ inputs.securesbom_host }}
+        INPUTS_SECURESBOM_API_KEY: ${{ inputs.securesbom_api_key }}
+        INPUTS_SECURESBOM_PUB_KEY_ID: ${{ inputs.securesbom_pub_key_id }}
+        INPUTS_ENABLE_PUBLIC_COSIGN_SIGSTORE: ${{ inputs.enable_public_cosign_sigstore}}
+        INPUTS_DELIVERABLE_TYPE: ${{inputs.deliverable_type}}
+        INPUTS_IMAGE_FULL_NAME: ${{inputs.image_full_name}}
+        INPUTS_REARM_SHORT_VERSION: ${{inputs.rearm_short_version}}
+        INPUTS_ENABLE_SBOM: ${{inputs.enable_sbom}}
+        INPUTS_SOURCE_CODE_SBOM_TYPE: ${{inputs.source_code_sbom_type}}
+        INPUTS_REARM_FULL_VERSION: ${{ inputs.rearm_full_version }}
+        INPUTS_ENABLE_CODEQL: ${{ inputs.enable_codeql }}
+        INPUTS_CODEQL_LANGUAGE: ${{inputs.codeql_language}}
+        INPUTS_EXTRACT_COMMIT_SIGNATURE: ${{ inputs.extract_commit_signature }}

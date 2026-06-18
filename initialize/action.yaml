@@ -736,13 +736,28 @@ runs:
         echo "sce_commit_date=$COMMIT_DATE" >> $GITHUB_OUTPUT
         echo "sce_vcs_uri=$VCS_URI" >> $GITHUB_OUTPUT
         
-        # Set environment variables for subsequent steps
-        echo "REARM_DO_BUILD=$DO_BUILD" >> $GITHUB_ENV
-        echo "REARM_LAST_COMMIT=$LAST_COMMIT" >> $GITHUB_ENV
-        echo "REARM_FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
-        echo "REARM_SHORT_VERSION=$SHORT_VERSION" >> $GITHUB_ENV
-        echo "REARM_BUILD_START=$BUILD_START" >> $GITHUB_ENV
-        echo "REARM_BUILD_LIFECYCLE=REJECTED" >> $GITHUB_ENV
+        # Set environment variables for subsequent steps. Use the heredoc
+        # form (NAME<<DELIM) rather than NAME=VALUE so a value containing a
+        # newline can never inject additional environment entries into
+        # $GITHUB_ENV.
+        {
+          echo "REARM_DO_BUILD<<__GHENV_EOF__"
+          echo "$DO_BUILD"
+          echo "__GHENV_EOF__"
+          echo "REARM_LAST_COMMIT<<__GHENV_EOF__"
+          echo "$LAST_COMMIT"
+          echo "__GHENV_EOF__"
+          echo "REARM_FULL_VERSION<<__GHENV_EOF__"
+          echo "$FULL_VERSION"
+          echo "__GHENV_EOF__"
+          echo "REARM_SHORT_VERSION<<__GHENV_EOF__"
+          echo "$SHORT_VERSION"
+          echo "__GHENV_EOF__"
+          echo "REARM_BUILD_START<<__GHENV_EOF__"
+          echo "$BUILD_START"
+          echo "__GHENV_EOF__"
+        } >> "$GITHUB_ENV"
+        echo "REARM_BUILD_LIFECYCLE=REJECTED" >> "$GITHUB_ENV"
         
         echo "Full Version: $FULL_VERSION"
         echo "Short Version: $SHORT_VERSION"
@@ -762,9 +777,10 @@ runs:
         # initialize step above so the diff is scoped to the same
         # commits the release was registered against.
         COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
       run: |
         set -euo pipefail
-        cd ${{ inputs.repo_path }}
+        cd ${INPUTS_REPO_PATH}
 
         mkdir -p /tmp/reliza
         FILES_LIST=/tmp/reliza/invisible-char-files.txt

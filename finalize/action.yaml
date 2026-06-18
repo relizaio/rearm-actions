@@ -78,9 +78,12 @@ runs:
       shell: bash
       run: |
         mkdir -p /tmp/reliza
-        cd ${{ inputs.repo_path }}
+        cd ${INPUTS_REPO_PATH}
         echo "" > /tmp/reliza/rearm_command
-        echo -n "--lifecycle ${{inputs.rearm_build_lifecycle}} " >> /tmp/reliza/rearm_command
+        echo -n "--lifecycle ${INPUTS_REARM_BUILD_LIFECYCLE} " >> /tmp/reliza/rearm_command
+      env:
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
+        INPUTS_REARM_BUILD_LIFECYCLE: ${{inputs.rearm_build_lifecycle}}
 
     - name: Set sce data
       shell: bash
@@ -95,22 +98,27 @@ runs:
       # $SCE_COMMIT_MESSAGE keeps the contents out of the script source.
       env:
         SCE_COMMIT_MESSAGE: ${{ inputs.sce_commit_message }}
+        INPUTS_COMMIT_LIST: ${{inputs.commit_list}}
+        INPUTS_SCE_COMMIT: ${{inputs.sce_commit}}
+        INPUTS_SCE_VCS_URI: ${{inputs.sce_vcs_uri}}
+        INPUTS_SCE_COMMIT_DATE: ${{inputs.sce_commit_date}}
+        INPUTS_REPO_PATH: ${{inputs.repo_path}}
       run: |
         # Use commit_list from initialize action if provided
-        if [ ! -z "${{inputs.commit_list}}" ]; then
-          echo -n "--commits ${{inputs.commit_list}} " >> /tmp/reliza/rearm_command
+        if [ ! -z "${INPUTS_COMMIT_LIST}" ]; then
+          echo -n "--commits ${INPUTS_COMMIT_LIST} " >> /tmp/reliza/rearm_command
         fi
 
         # Use SCE data from initialize action or fall back to github
         # context. On `pull_request` events github.sha is the synthetic
         # merge commit; prefer the PR's actual head SHA so the SCE
         # tracks the commit the developer pushed.
-        sce_commit="${{inputs.sce_commit}}"
+        sce_commit="${INPUTS_SCE_COMMIT}"
         if [ -z "$sce_commit" ]; then
           sce_commit="${{ github.event.pull_request.head.sha || github.sha }}"
         fi
 
-        sce_vcs_uri="${{inputs.sce_vcs_uri}}"
+        sce_vcs_uri="${INPUTS_SCE_VCS_URI}"
         if [ -z "$sce_vcs_uri" ]; then
           sce_vcs_uri="github.com/${{github.repository}}"
         fi
@@ -127,29 +135,29 @@ runs:
           echo -n "--commitmessage '$escaped' " >> /tmp/reliza/rearm_command
         fi
 
-        if [ ! -z "${{inputs.sce_commit_date}}" ]; then
-          echo -n "--date ${{inputs.sce_commit_date}} " >> /tmp/reliza/rearm_command
+        if [ ! -z "${INPUTS_SCE_COMMIT_DATE}" ]; then
+          echo -n "--date ${INPUTS_SCE_COMMIT_DATE} " >> /tmp/reliza/rearm_command
         fi
 
-        echo -n "--vcstype git --vcsuri ${sce_vcs_uri} --repo-path ${{inputs.repo_path}} " >> /tmp/reliza/rearm_command
+        echo -n "--vcstype git --vcsuri ${sce_vcs_uri} --repo-path ${INPUTS_REPO_PATH} " >> /tmp/reliza/rearm_command
 
     - name: Submit metadata to Rearm
       shell: bash
       run: |
-        cd ${{ inputs.repo_path }}
+        cd ${INPUTS_REPO_PATH}
 
         # Use purl from sbom-sign-scan if provided
-        purl="${{inputs.purl}}"
+        purl="${INPUTS_PURL}"
         echo "deliverable purl=$purl"
 
         # Add scearts if provided and not empty
-        scearts='${{ inputs.scearts }}'
+        scearts='${INPUTS_SCEARTS}'
         if [[ -n "$scearts" && "$scearts" != "" && "$scearts" != "[]" ]]; then
           echo -n "--scearts '${scearts}' " >> /tmp/reliza/rearm_command
         fi
 
         # Add odelartsjson if provided and not empty
-        odelartsjson='${{ inputs.odelartsjson }}'
+        odelartsjson='${INPUTS_ODELARTSJSON}'
         if [[ -n "$odelartsjson" && "$odelartsjson" != "" && "$odelartsjson" != "[]" ]]; then
           echo -n "--odelartsjson '${odelartsjson}' " >> /tmp/reliza/rearm_command
         fi
@@ -160,30 +168,30 @@ runs:
         # On `pull_request` events github.ref_name is `<N>/merge` (the
         # synthetic ref) — use the PR's head_ref so the release lands
         # on the source branch, unified with pre-PR commits.
-        rearm_branch_name="${{ github.head_ref || github.ref_name }}"
+        rearm_branch_name="$GITHUB_HEAD_REF_OR_REF_NAME"
         # github.sha on PR events is the synthetic merge commit; the
         # buildid label uses the actual head SHA for traceability.
-        rearm_head_sha="${{ github.event.pull_request.head.sha || github.sha }}"
-        echo -n "-b ${rearm_branch_name} -u ${{ inputs.rearm_api_url }} \
-          -v \"${{ inputs.rearm_full_version }}\" " >> /tmp/reliza/rearm_command
-        echo -n "--odelid ${{inputs.image_full_name}} " >> /tmp/reliza/rearm_command
-        echo -n "--odelbuildid github${{github.action}}${rearm_head_sha} " >> /tmp/reliza/rearm_command
+        rearm_head_sha="$GITHUB_HEAD_SHA"
+        echo -n "-b ${rearm_branch_name} -u ${INPUTS_REARM_API_URL} \
+          -v \"${INPUTS_REARM_FULL_VERSION}\" " >> /tmp/reliza/rearm_command
+        echo -n "--odelid ${INPUTS_IMAGE_FULL_NAME} " >> /tmp/reliza/rearm_command
+        echo -n "--odelbuildid github${GITHUB_ACTION}${rearm_head_sha} " >> /tmp/reliza/rearm_command
         echo -n "--odelbuilduri https://github.com/${{github.repository}}/actions/runs/${{github.run_id}} " >> /tmp/reliza/rearm_command
         if [[ -n "$purl" ]]; then
           echo -n "--odelidentifiers \"PURL:${purl}\" " >> /tmp/reliza/rearm_command
         fi
         echo -n '--odelcimeta "GitHub Actions" ' >> /tmp/reliza/rearm_command
-        echo -n "--odeltype ${{inputs.deliverable_type}} " >> /tmp/reliza/rearm_command
+        echo -n "--odeltype ${INPUTS_DELIVERABLE_TYPE} " >> /tmp/reliza/rearm_command
 
-        if [[ "${{inputs.image_digest}}" != "" ]]
+        if [[ "${INPUTS_IMAGE_DIGEST}" != "" ]]
         then
-          echo -n "--odeldigests ${{inputs.image_digest}} " >> /tmp/reliza/rearm_command
+          echo -n "--odeldigests ${INPUTS_IMAGE_DIGEST} " >> /tmp/reliza/rearm_command
         fi
-        if [ ! -z "${{inputs.component}}" ]
+        if [ ! -z "${INPUTS_COMPONENT}" ]
         then
-          echo -n "--component ${{inputs.component}} " >> /tmp/reliza/rearm_command
+          echo -n "--component ${INPUTS_COMPONENT} " >> /tmp/reliza/rearm_command
         fi
-        echo -n "--datestart ${{inputs.rearm_build_start}} " >> /tmp/reliza/rearm_command
+        echo -n "--datestart ${INPUTS_REARM_BUILD_START} " >> /tmp/reliza/rearm_command
         echo -n "--dateend $(date -Iseconds) " >> /tmp/reliza/rearm_command
 
         # Forward PR metadata when running on a `pull_request` event
@@ -194,9 +202,9 @@ runs:
         # PR_NUMBER is empty on non-PR events. Requires CLI ≥ 26.05.5.
         PR_NUMBER='${{ github.event.pull_request.number }}'
         if [ -n "$PR_NUMBER" ]; then
-          PR_TITLE='${{ github.event.pull_request.title }}'
-          PR_TARGET_BRANCH='${{ github.event.pull_request.base.ref }}'
-          PR_ENDPOINT='${{ github.event.pull_request.html_url }}'
+          PR_TITLE='${GITHUB_EVENT_PULL_REQUEST_TITLE}'
+          PR_TARGET_BRANCH='${GITHUB_EVENT_PULL_REQUEST_BASE_REF}'
+          PR_ENDPOINT='${GITHUB_EVENT_PULL_REQUEST_HTML_URL}'
           echo -n "--pr-identity ${PR_NUMBER} --pr-state OPEN " >> /tmp/reliza/rearm_command
           [ -n "$PR_TITLE" ] && echo -n "--pr-title \"${PR_TITLE}\" " >> /tmp/reliza/rearm_command
           [ -n "$PR_TARGET_BRANCH" ] && echo -n "--pr-target-branch-name ${PR_TARGET_BRANCH} " >> /tmp/reliza/rearm_command
@@ -205,7 +213,7 @@ runs:
         # debug — safe: rearm_command contains no credentials
         cat /tmp/reliza/rearm_command
         # send data — credentials injected only at eval time, never written to disk
-        if rearm_output=$(eval rearm addrelease -k '${{ inputs.rearm_api_key }}' -i '${{ inputs.rearm_api_id }}' $(cat /tmp/reliza/rearm_command) 2>&1); then
+        if rearm_output=$(eval rearm addrelease -k '${INPUTS_REARM_API_KEY}' -i '${INPUTS_REARM_API_ID}' $(cat /tmp/reliza/rearm_command) 2>&1); then
           echo "Success: $rearm_output"
         else
           exit_code=$?
@@ -217,16 +225,38 @@ runs:
         # Extract UUID from JSON output using jq
         release_uuid=$(echo "$rearm_output" | jq -r '.data.addReleaseProgrammatic.uuid // empty')
         echo "Completed sending release metadata. Release UUID: $release_uuid"
+      env:
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
+        INPUTS_PURL: ${{inputs.purl}}
+        INPUTS_SCEARTS: ${{ inputs.scearts }}
+        INPUTS_ODELARTSJSON: ${{ inputs.odelartsjson }}
+        INPUTS_REARM_API_URL: ${{ inputs.rearm_api_url }}
+        INPUTS_REARM_FULL_VERSION: ${{ inputs.rearm_full_version }}
+        INPUTS_IMAGE_FULL_NAME: ${{inputs.image_full_name}}
+        INPUTS_DELIVERABLE_TYPE: ${{inputs.deliverable_type}}
+        INPUTS_IMAGE_DIGEST: ${{inputs.image_digest}}
+        INPUTS_COMPONENT: ${{inputs.component}}
+        INPUTS_REARM_BUILD_START: ${{inputs.rearm_build_start}}
+        GITHUB_EVENT_PULL_REQUEST_TITLE: ${{ github.event.pull_request.title }}
+        GITHUB_EVENT_PULL_REQUEST_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        GITHUB_EVENT_PULL_REQUEST_HTML_URL: ${{ github.event.pull_request.html_url }}
+        GITHUB_HEAD_REF_OR_REF_NAME: ${{ github.head_ref || github.ref_name }}
+        GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        INPUTS_REARM_API_KEY: ${{ inputs.rearm_api_key }}
+        INPUTS_REARM_API_ID: ${{ inputs.rearm_api_id }}
     - name: Fail build if rearm status is rejected
       shell: bash
       run: |
         echo "checking build status..."
-        cd ${{ inputs.repo_path }}
-        if [[ "${{inputs.rearm_build_lifecycle}}" == "REJECTED" ]]
+        cd ${INPUTS_REPO_PATH}
+        if [[ "${INPUTS_REARM_BUILD_LIFECYCLE}" == "REJECTED" ]]
         then
           echo "Failing build since Rearm build Lifecycle is rejected"
           exit 1
         fi
+      env:
+        INPUTS_REPO_PATH: ${{ inputs.repo_path }}
+        INPUTS_REARM_BUILD_LIFECYCLE: ${{inputs.rearm_build_lifecycle}}
 post:
   shell: bash
   run: |
