@@ -130,7 +130,7 @@ jobs:
                 {
                   "displayIdentifier": "registry.acme.com/gizmo:0.1.0",
                   "type": "CONTAINER",
-                  "softwareMetadata": { "packageType": "OCI", "digests": ["sha256:abc123"] },
+                  "softwareMetadata": { "packageType": "CONTAINER", "digests": ["sha256:abc123"] },
                   "artifacts": [
                     { "displayIdentifier": "gizmo-image-sbom", "type": "BOM", "bomFormat": "CYCLONEDX", "filePath": "./services/gizmo/image-sbom.cdx.json" }
                   ]
