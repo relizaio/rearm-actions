@@ -115,6 +115,33 @@ jobs:
 - **jq**: Required for JSON parsing
 - **Git history**: Use `fetch-depth: 0` in checkout for full history (required for change detection and branch sync)
 
+## Input Value Requirements
+
+Since `v1.7.0`, every action consumes its inputs through step-level `env:`
+indirection — a hardening against template injection (each `${{ inputs.* }}` is
+bound to an environment variable instead of being interpolated directly into the
+run script). As a result, **every input value must be an already-resolved
+string**: a literal, a step output, or an `env` context expression such as
+`${{ steps.build.outputs.IMAGE_DIGEST }}` or `${{ env.DOCKER_SHA_256 }}`.
+
+**Do not pass a bare shell-variable reference.** A value like
+`image_digest: $DOCKER_SHA_256` is forwarded verbatim and is *not* expanded by
+the action's shell (it was under the pre-`v1.7.0` inline form, but no longer),
+producing errors such as
+`invalid reference format: repository name (...@$DOCKER_SHA_256) must be lowercase`.
+If you computed a value into a shell variable, surface it via `$GITHUB_OUTPUT`
+or `$GITHUB_ENV` first and reference it with `${{ steps.<id>.outputs.<name> }}`
+or `${{ env.<NAME> }}`.
+
+```yaml
+# ✅ resolved from a step output
+image_digest: ${{ steps.build.outputs.IMAGE_DIGEST }}
+# ✅ resolved from an env var exported earlier via $GITHUB_ENV
+image_digest: ${{ env.DOCKER_SHA_256 }}
+# ❌ bare shell reference — forwarded literally, never expanded by the action
+image_digest: $DOCKER_SHA_256
+```
+
 ## Action Details
 
 ### [Setup CLI](./setup-cli)
