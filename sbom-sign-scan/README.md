@@ -38,6 +38,7 @@ This action performs SBOM generation and signing, and runs CodeQL analysis. It o
 | `enable_codeql` | `false` | Enable CodeQL analysis |
 | `codeql_language` | `none` | Language to analyze with CodeQL, use 'custom' for Dockerfile.sarif |
 | `enable_securesbom` | `false` | Enable SecureSBOM signing by ShiftLeftCyber |
+| `securesbom_signing_mode` | `sbom` | SecureSBOM signing mode: `sbom` for embedded SBOM signing, `digest` for local digest signing without uploading the SBOM |
 | `securesbom_pub_key_id` | | Public key id for SecureSBOM |
 | `securesbom_host` | | SecureSBOM host |
 | `securesbom_api_key` | | SecureSBOM API key |
@@ -95,6 +96,26 @@ For `CONTAINER` deliverable type, this action generates a Package URL (PURL) usi
 
 ## SecureSBOM Integration
 
-When `enable_securesbom` is `true`, SBOM signing uses the SecureSBOM v2 signing API (`/api/v2/sbom/sign`). Public key artifacts are retrieved from `/api/v1/keys` by `securesbom_pub_key_id` and written from the matching response object's `public_key` field.
+When `enable_securesbom` is `true`, SBOM signing defaults to SecureSBOM embedded signing through the v2 signing API (`/api/v2/sbom/sign`). Public key artifacts are retrieved from `/api/v1/keys` by `securesbom_pub_key_id` and written from the matching response object's `public_key` field.
 
-Security note: SecureSBOM API calls fail the action on non-2xx responses, parse JSON responses before writing artifacts, and require the returned key `id` to match `securesbom_pub_key_id` before exporting `public_key`.
+Set `securesbom_signing_mode: digest` when the full SBOM cannot or should not be sent to SecureSBOM. In digest mode, the action computes a base64-encoded raw SHA-256 digest locally, sends only that digest to `/api/v1/sign/digest`, leaves the SBOM file unchanged, and attaches the returned detached signature as a `SIGNATURE` artifact alongside the SecureSBOM public key.
+
+```yaml
+- name: Generate SBOMs with SecureSBOM digest signing
+  uses: relizaio/rearm-actions/sbom-sign-scan@main
+  with:
+    image_full_name: ${{ env.IMAGE_FULL_NAME }}
+    image_digest: ${{ env.IMAGE_DIGEST }}
+    rearm_short_version: ${{ steps.init.outputs.short_version }}
+    rearm_full_version: ${{ steps.init.outputs.full_version }}
+    enable_sbom: 'true'
+    enable_securesbom: 'true'
+    securesbom_signing_mode: digest
+    securesbom_pub_key_id: ${{ secrets.SECURE_SBOM_KEY_ID }}
+    securesbom_host: ${{ vars.SECURE_SBOM_HOST }}
+    securesbom_api_key: ${{ secrets.SECURE_SBOM_API_KEY }}
+```
+
+Digest signatures verify the exact SBOM file bytes used to compute the digest. Any downstream formatting, canonicalization, or regeneration of the SBOM after signing will change the digest and invalidate the detached signature.
+
+Security note: SecureSBOM API calls fail the action on non-2xx responses, parse JSON responses before writing artifacts, and require the returned key `id` to match `securesbom_pub_key_id` before exporting `public_key`. Digest mode reduces SBOM disclosure to SecureSBOM, but the API still receives the key id and digest, and the API key must continue to be stored as a secret.

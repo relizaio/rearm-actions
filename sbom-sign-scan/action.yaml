@@ -58,6 +58,10 @@ inputs:
     required: false
     default: 'false'
     description: "Enable SecureSBOM signing of SBOMs by ShiftLeftCyber"
+  securesbom_signing_mode:
+    required: false
+    default: 'sbom'
+    description: "SecureSBOM signing mode: sbom uploads the SBOM for embedded signing, digest sends only a SHA-256 digest and attaches a detached signature"
   extract_commit_signature:
     required: false
     default: 'true'
@@ -189,43 +193,83 @@ runs:
             local sign_request="./${prefix}-securesbom-sign-request.json"
             local sign_response="./${prefix}-securesbom-sign-response.json"
             local signed_bom="${bom_file}.signed"
+            local digest_request="./${prefix}-securesbom-digest-sign-request.json"
+            local digest_response="./${prefix}-securesbom-digest-sign-response.json"
+            local digest_signature="./${prefix}-securesbom-digest.sig"
             local key_response="./${prefix}-securesbom-key-response.json"
+            local public_key_file="./${prefix}-securesbom-public-key.pem"
 
-            node -e '
-              const fs = require("fs");
-              const [sbomPath, requestPath, keyId] = process.argv.slice(1);
-              const sbom = JSON.parse(fs.readFileSync(sbomPath, "utf8"));
-              fs.writeFileSync(requestPath, JSON.stringify({
-                key_id: keyId,
-                pretty: false,
-                detached: false,
-                sbom
-              }));
-            ' "${bom_file}" "${sign_request}" "${INPUTS_SECURESBOM_PUB_KEY_ID}"
+            if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'sbom' ]]; then
+              node -e '
+                const fs = require("fs");
+                const [sbomPath, requestPath, keyId] = process.argv.slice(1);
+                const sbom = JSON.parse(fs.readFileSync(sbomPath, "utf8"));
+                fs.writeFileSync(requestPath, JSON.stringify({
+                  key_id: keyId,
+                  pretty: false,
+                  detached: false,
+                  sbom
+                }));
+              ' "${bom_file}" "${sign_request}" "${INPUTS_SECURESBOM_PUB_KEY_ID}"
 
-            curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v2/sbom/sign" \
-              --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
-              --header "Content-Type: application/json" \
-              --data-binary "@${sign_request}" > "${sign_response}"
+              curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v2/sbom/sign" \
+                --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
+                --header "Content-Type: application/json" \
+                --data-binary "@${sign_request}" > "${sign_response}"
 
-            node -e '
-              const fs = require("fs");
-              const [responsePath, signedBomPath] = process.argv.slice(1);
-              const response = JSON.parse(fs.readFileSync(responsePath, "utf8"));
-              const signedSbom = response && Object.prototype.hasOwnProperty.call(response, "signed_sbom")
-                ? response.signed_sbom
-                : response;
-              const hasSbomShape = signedSbom && (
-                signedSbom.bomFormat ||
-                signedSbom.spdxVersion ||
-                (signedSbom.metadata && signedSbom.metadata.sbomAuthorSignature)
-              );
-              if (!signedSbom || typeof signedSbom !== "object" || Array.isArray(signedSbom) || !hasSbomShape) {
-                throw new Error("SecureSBOM v2 sign response did not include an embedded signed SBOM");
-              }
-              fs.writeFileSync(signedBomPath, `${JSON.stringify(signedSbom, null, 2)}\n`);
-            ' "${sign_response}" "${signed_bom}"
-            mv "${signed_bom}" "${bom_file}"
+              node -e '
+                const fs = require("fs");
+                const [responsePath, signedBomPath] = process.argv.slice(1);
+                const response = JSON.parse(fs.readFileSync(responsePath, "utf8"));
+                const signedSbom = response && Object.prototype.hasOwnProperty.call(response, "signed_sbom")
+                  ? response.signed_sbom
+                  : response;
+                const hasSbomShape = signedSbom && (
+                  signedSbom.bomFormat ||
+                  signedSbom.spdxVersion ||
+                  (signedSbom.metadata && signedSbom.metadata.sbomAuthorSignature)
+                );
+                if (!signedSbom || typeof signedSbom !== "object" || Array.isArray(signedSbom) || !hasSbomShape) {
+                  throw new Error("SecureSBOM v2 sign response did not include an embedded signed SBOM");
+                }
+                fs.writeFileSync(signedBomPath, `${JSON.stringify(signedSbom, null, 2)}\n`);
+              ' "${sign_response}" "${signed_bom}"
+              mv "${signed_bom}" "${bom_file}"
+            elif [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'digest' ]]; then
+              local digest_value
+              digest_value=$(openssl dgst -sha256 -binary "${bom_file}" | base64 | tr -d '\n')
+
+              node -e '
+                const fs = require("fs");
+                const [requestPath, keyId, digest] = process.argv.slice(1);
+                fs.writeFileSync(requestPath, JSON.stringify({
+                  key_id: keyId,
+                  hash_algorithm: "sha256",
+                  digest
+                }));
+              ' "${digest_request}" "${INPUTS_SECURESBOM_PUB_KEY_ID}" "${digest_value}"
+
+              curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v1/sign/digest" \
+                --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
+                --header "Content-Type: application/json" \
+                --data-binary "@${digest_request}" > "${digest_response}"
+
+              node -e '
+                const fs = require("fs");
+                const [responsePath, signaturePath, keyId] = process.argv.slice(1);
+                const response = JSON.parse(fs.readFileSync(responsePath, "utf8"));
+                if (!response || response.key_id !== keyId) {
+                  throw new Error(`SecureSBOM digest sign response key_id did not match ${keyId}`);
+                }
+                if (typeof response.signature !== "string" || response.signature.length === 0) {
+                  throw new Error("SecureSBOM digest sign response did not include signature");
+                }
+                fs.writeFileSync(signaturePath, response.signature.endsWith("\n") ? response.signature : `${response.signature}\n`);
+              ' "${digest_response}" "${digest_signature}" "${INPUTS_SECURESBOM_PUB_KEY_ID}"
+            else
+              echo "Unsupported SecureSBOM signing mode: ${INPUTS_SECURESBOM_SIGNING_MODE}. Expected 'sbom' or 'digest'." >&2
+              exit 1
+            fi
 
             curl --fail --silent --show-error --location --get "${INPUTS_SECURESBOM_HOST}/api/v1/keys" \
               --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
@@ -241,10 +285,13 @@ runs:
                 throw new Error(`SecureSBOM key ${keyId} response did not include public_key`);
               }
               fs.writeFileSync(publicKeyPath, key.public_key.endsWith("\n") ? key.public_key : `${key.public_key}\n`);
-            ' "${key_response}" "./${prefix}-securesbom-public-key.pem" "${INPUTS_SECURESBOM_PUB_KEY_ID}"
+            ' "${key_response}" "${public_key_file}" "${INPUTS_SECURESBOM_PUB_KEY_ID}"
 
-            rm -f "${sign_request}" "${sign_response}" "${key_response}"
+            rm -f "${sign_request}" "${sign_response}" "${digest_request}" "${digest_response}" "${key_response}"
             SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}]}'
+            if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'digest' ]]; then
+              SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-digest.sig", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DIGEST"}, {"key":"hashAlgorithm","value":"sha256"}]}'
+            fi
             has_artifacts=true
           fi
 
@@ -421,6 +468,7 @@ runs:
       env:
         INPUTS_REPO_PATH: ${{ inputs.repo_path }}
         INPUTS_ENABLE_SECURESBOM: ${{ inputs.enable_securesbom }}
+        INPUTS_SECURESBOM_SIGNING_MODE: ${{ inputs.securesbom_signing_mode }}
         INPUTS_SECURESBOM_HOST: ${{ inputs.securesbom_host }}
         INPUTS_SECURESBOM_API_KEY: ${{ inputs.securesbom_api_key }}
         INPUTS_SECURESBOM_PUB_KEY_ID: ${{ inputs.securesbom_pub_key_id }}
