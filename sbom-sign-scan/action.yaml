@@ -249,7 +249,7 @@ runs:
                 }));
               ' "${digest_request}" "${INPUTS_SECURESBOM_PUB_KEY_ID}" "${digest_value}"
 
-              curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v1/sign/digest" \
+              curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v1/digest/sign" \
                 --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
                 --header "Content-Type: application/json" \
                 --data-binary "@${digest_request}" > "${digest_response}"

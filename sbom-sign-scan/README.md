@@ -98,7 +98,7 @@ For `CONTAINER` deliverable type, this action generates a Package URL (PURL) usi
 
 When `enable_securesbom` is `true`, SBOM signing defaults to SecureSBOM embedded signing through the v2 signing API (`/api/v2/sbom/sign`). Public key artifacts are retrieved from `/api/v1/keys` by `securesbom_pub_key_id` and written from the matching response object's `public_key` field.
 
-Set `securesbom_signing_mode: digest` when the full SBOM cannot or should not be sent to SecureSBOM. In digest mode, the action computes a base64-encoded raw SHA-256 digest locally, sends only that digest to `/api/v1/sign/digest`, leaves the SBOM file unchanged, and attaches the returned detached signature as a `SIGNATURE` artifact alongside the SecureSBOM public key.
+Set `securesbom_signing_mode: digest` when the full SBOM cannot or should not be sent to SecureSBOM. In digest mode, the action computes a base64-encoded raw SHA-256 digest locally, sends only that digest to `/api/v1/digest/sign`, leaves the SBOM file unchanged, and attaches the returned detached signature as a `SIGNATURE` artifact alongside the SecureSBOM public key.
 
 ```yaml
 - name: Generate SBOMs with SecureSBOM digest signing
