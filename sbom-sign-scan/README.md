@@ -95,6 +95,6 @@ For `CONTAINER` deliverable type, this action generates a Package URL (PURL) usi
 
 ## SecureSBOM Integration
 
-When `enable_securesbom` is `true`, SBOM signing uses the SecureSBOM v2 signing API (`/api/v2/sbom/sign`). Public key artifacts are retrieved from `/api/v1/keys` by `securesbom_pub_key_id` and written from the matching response object's `public_key` field.
+When `enable_securesbom` is `true`, SBOM signing uses the SecureSBOM v2 signing API (`/api/v2/sbom/sign`) in detached mode. The SBOM file remains unchanged, the detached SecureSBOM signature is attached as a `SIGNATURE` artifact, and the public key artifact is retrieved from `/api/v1/keys` by `securesbom_pub_key_id`.
 
-Security note: SecureSBOM API calls fail the action on non-2xx responses, parse JSON responses before writing artifacts, and require the returned key `id` to match `securesbom_pub_key_id` before exporting `public_key`.
+Security note: SecureSBOM API calls fail the action on non-2xx responses, parse JSON responses with `jq` before writing artifacts, require a detached signature value in the signing response, and require the returned key `id` to match `securesbom_pub_key_id` before exporting `public_key`.
