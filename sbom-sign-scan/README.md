@@ -92,3 +92,9 @@ Supports standard CodeQL languages (javascript, python, java, etc.) or use `cust
 ## PURL Generation
 
 For `CONTAINER` deliverable type, this action generates a Package URL (PURL) using the `url2purl-cli` tool. The PURL is output for use with the finalize action to set deliverable identifiers.
+
+## SecureSBOM Integration
+
+When `enable_securesbom` is `true`, SBOM signing uses the SecureSBOM v2 signing API (`/api/v2/sbom/sign`) in detached mode. The SBOM file remains unchanged, the detached SecureSBOM signature is attached as a `SIGNATURE` artifact, and the public key artifact is retrieved from `/api/v1/keys` by `securesbom_pub_key_id`.
+
+Security note: SecureSBOM API calls fail the action on non-2xx responses, parse JSON responses with `jq` before writing artifacts, require a detached signature value in the signing response, and require the returned key `id` to match `securesbom_pub_key_id` before exporting `public_key`.

@@ -186,16 +186,66 @@ runs:
 
           # Sign with SecureSBOM by ShiftLeftCyber if enabled
           if [[ "${INPUTS_ENABLE_SECURESBOM}" == 'true' ]]; then
-            mv "${bom_file}" "${bom_file}.tmp"
-            curl --location "${INPUTS_SECURESBOM_HOST}/api/v1/sbom/sign?pretty=false" \
-              --header "x-api-key: ${INPUTS_SECURESBOM_API_KEY}" \
-              --form "sbom=@\"${bom_file}.tmp\"" \
-              --form "key_id=\"${INPUTS_SECURESBOM_PUB_KEY_ID}\"" > "${bom_file}"
-            rm "${bom_file}.tmp"
+            local sign_request="./${prefix}-securesbom-sign-request.json"
+            local sign_response="./${prefix}-securesbom-sign-response.json"
+            local signature_file="./${prefix}-securesbom-signature.json"
+            local key_response="./${prefix}-securesbom-key-response.json"
 
-            curl --location "${INPUTS_SECURESBOM_HOST}/api/v1/keys/public?key_id=${INPUTS_SECURESBOM_PUB_KEY_ID}&format=pem" \
-              --header "x-api-key: ${INPUTS_SECURESBOM_API_KEY}" > "./${prefix}-securesbom-public-key.pem"
-            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}]}'
+            command -v jq >/dev/null || {
+              echo "jq is required for SecureSBOM signing response validation" >&2
+              exit 1
+            }
+
+            jq -n --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" --slurpfile sbom "${bom_file}" \
+              '{key_id: $key_id, pretty: false, detached: true, sbom: $sbom[0]}' > "${sign_request}"
+
+            curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v2/sbom/sign" \
+              --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --data-binary "@${sign_request}" > "${sign_response}"
+
+            jq -e --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" '
+              . as $response
+              | if $response.detached != true then
+                  error("SecureSBOM v2 sign response was not detached")
+                elif $response.sbom_type == "cyclonedx" then
+                  if ($response.signed_sbom | type) != "object" then
+                    error("SecureSBOM CycloneDX detached response did not include a signature object")
+                  elif ($response.signed_sbom.value | type) != "string" or ($response.signed_sbom.value | length) == 0 then
+                    error("SecureSBOM CycloneDX detached signature object did not include value")
+                  elif ($response.signed_sbom.keyId // $key_id) != $key_id then
+                    error("SecureSBOM CycloneDX detached signature keyId did not match requested key")
+                  else
+                    $response.signed_sbom
+                  end
+                elif $response.sbom_type == "spdx" then
+                  if ($response.signature_b64 | type) != "string" or ($response.signature_b64 | length) == 0 then
+                    error("SecureSBOM SPDX detached response did not include signature_b64")
+                  else
+                    {
+                      signature_b64: $response.signature_b64,
+                      algorithm: $response.algorithm,
+                      keyId: $key_id
+                    }
+                  end
+                else
+                  error("SecureSBOM v2 sign response used an unsupported sbom_type")
+                end
+            ' "${sign_response}" > "${signature_file}"
+
+            curl --fail --silent --show-error --location --get "${INPUTS_SECURESBOM_HOST}/api/v1/keys" \
+              --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
+              --data-urlencode "key_id=${INPUTS_SECURESBOM_PUB_KEY_ID}" > "${key_response}"
+
+            jq -er --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" '
+              (if type == "array" then .[] else . end)
+              | select(.id == $key_id)
+              | .public_key
+              | select(type == "string" and length > 0)
+            ' "${key_response}" > "./${prefix}-securesbom-public-key.pem"
+
+            rm -f "${sign_request}" "${sign_response}" "${key_response}"
+            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}]},{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-signature.json", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DETACHED"}]}'
             has_artifacts=true
           fi
 
