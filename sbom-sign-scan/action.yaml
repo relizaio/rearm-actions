@@ -61,7 +61,7 @@ inputs:
   securesbom_signing_mode:
     required: false
     default: 'sbom'
-    description: "SecureSBOM signing mode: sbom uploads the SBOM for embedded signing, digest sends only a SHA-256 digest and attaches a detached signature"
+    description: "SecureSBOM signing mode: sbom uploads the SBOM for detached signing, digest sends only a SHA-256 digest and attaches a detached signature"
   extract_commit_signature:
     required: false
     default: 'true'
@@ -192,80 +192,78 @@ runs:
           if [[ "${INPUTS_ENABLE_SECURESBOM}" == 'true' ]]; then
             local sign_request="./${prefix}-securesbom-sign-request.json"
             local sign_response="./${prefix}-securesbom-sign-response.json"
-            local signed_bom="${bom_file}.signed"
+            local signature_file="./${prefix}-securesbom-signature.json"
             local digest_request="./${prefix}-securesbom-digest-sign-request.json"
             local digest_response="./${prefix}-securesbom-digest-sign-response.json"
             local digest_signature="./${prefix}-securesbom-digest.sig"
             local key_response="./${prefix}-securesbom-key-response.json"
             local public_key_file="./${prefix}-securesbom-public-key.pem"
 
+            command -v jq >/dev/null || {
+              echo "jq is required for SecureSBOM signing response validation" >&2
+              exit 1
+            }
+
             if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'sbom' ]]; then
-              node -e '
-                const fs = require("fs");
-                const [sbomPath, requestPath, keyId] = process.argv.slice(1);
-                const sbom = JSON.parse(fs.readFileSync(sbomPath, "utf8"));
-                fs.writeFileSync(requestPath, JSON.stringify({
-                  key_id: keyId,
-                  pretty: false,
-                  detached: false,
-                  sbom
-                }));
-              ' "${bom_file}" "${sign_request}" "${INPUTS_SECURESBOM_PUB_KEY_ID}"
+              jq -n --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" --slurpfile sbom "${bom_file}" \
+                '{key_id: $key_id, pretty: false, detached: true, sbom: $sbom[0]}' > "${sign_request}"
 
               curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v2/sbom/sign" \
                 --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
                 --header "Content-Type: application/json" \
                 --data-binary "@${sign_request}" > "${sign_response}"
 
-              node -e '
-                const fs = require("fs");
-                const [responsePath, signedBomPath] = process.argv.slice(1);
-                const response = JSON.parse(fs.readFileSync(responsePath, "utf8"));
-                const signedSbom = response && Object.prototype.hasOwnProperty.call(response, "signed_sbom")
-                  ? response.signed_sbom
-                  : response;
-                const hasSbomShape = signedSbom && (
-                  signedSbom.bomFormat ||
-                  signedSbom.spdxVersion ||
-                  (signedSbom.metadata && signedSbom.metadata.sbomAuthorSignature)
-                );
-                if (!signedSbom || typeof signedSbom !== "object" || Array.isArray(signedSbom) || !hasSbomShape) {
-                  throw new Error("SecureSBOM v2 sign response did not include an embedded signed SBOM");
-                }
-                fs.writeFileSync(signedBomPath, `${JSON.stringify(signedSbom, null, 2)}\n`);
-              ' "${sign_response}" "${signed_bom}"
-              mv "${signed_bom}" "${bom_file}"
+              jq -e --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" '
+                . as $response
+                | if $response.detached != true then
+                    error("SecureSBOM v2 sign response was not detached")
+                  elif $response.sbom_type == "cyclonedx" then
+                    if ($response.signed_sbom | type) != "object" then
+                      error("SecureSBOM CycloneDX detached response did not include a signature object")
+                    elif ($response.signed_sbom.value | type) != "string" or ($response.signed_sbom.value | length) == 0 then
+                      error("SecureSBOM CycloneDX detached signature object did not include value")
+                    elif ($response.signed_sbom.keyId // $key_id) != $key_id then
+                      error("SecureSBOM CycloneDX detached signature keyId did not match requested key")
+                    else
+                      $response.signed_sbom
+                    end
+                  elif $response.sbom_type == "spdx" then
+                    if ($response.signature_b64 | type) != "string" or ($response.signature_b64 | length) == 0 then
+                      error("SecureSBOM SPDX detached response did not include signature_b64")
+                    else
+                      {
+                        signature_b64: $response.signature_b64,
+                        algorithm: $response.algorithm,
+                        keyId: $key_id
+                      }
+                    end
+                  else
+                    error("SecureSBOM v2 sign response used an unsupported sbom_type")
+                  end
+              ' "${sign_response}" > "${signature_file}"
             elif [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'digest' ]]; then
               local digest_value
               digest_value=$(openssl dgst -sha256 -binary "${bom_file}" | base64 | tr -d '\n')
 
-              node -e '
-                const fs = require("fs");
-                const [requestPath, keyId, digest] = process.argv.slice(1);
-                fs.writeFileSync(requestPath, JSON.stringify({
-                  key_id: keyId,
-                  hash_algorithm: "sha256",
-                  digest
-                }));
-              ' "${digest_request}" "${INPUTS_SECURESBOM_PUB_KEY_ID}" "${digest_value}"
+              jq -n \
+                --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" \
+                --arg digest "${digest_value}" \
+                '{key_id: $key_id, hash_algorithm: "sha256", digest: $digest}' > "${digest_request}"
 
               curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v1/digest/sign" \
                 --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
                 --header "Content-Type: application/json" \
                 --data-binary "@${digest_request}" > "${digest_response}"
 
-              node -e '
-                const fs = require("fs");
-                const [responsePath, signaturePath, keyId] = process.argv.slice(1);
-                const response = JSON.parse(fs.readFileSync(responsePath, "utf8"));
-                if (!response || response.key_id !== keyId) {
-                  throw new Error(`SecureSBOM digest sign response key_id did not match ${keyId}`);
-                }
-                if (typeof response.signature !== "string" || response.signature.length === 0) {
-                  throw new Error("SecureSBOM digest sign response did not include signature");
-                }
-                fs.writeFileSync(signaturePath, response.signature.endsWith("\n") ? response.signature : `${response.signature}\n`);
-              ' "${digest_response}" "${digest_signature}" "${INPUTS_SECURESBOM_PUB_KEY_ID}"
+              jq -er --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" '
+                if .key_id != $key_id then
+                  error("SecureSBOM digest sign response key_id did not match requested key")
+                elif (.signature | type) != "string" or (.signature | length) == 0 then
+                  error("SecureSBOM digest sign response did not include signature")
+                else
+                  .signature
+                end
+              ' "${digest_response}" > "${digest_signature}"
             else
               echo "Unsupported SecureSBOM signing mode: ${INPUTS_SECURESBOM_SIGNING_MODE}. Expected 'sbom' or 'digest'." >&2
               exit 1
@@ -275,20 +273,18 @@ runs:
               --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
               --data-urlencode "key_id=${INPUTS_SECURESBOM_PUB_KEY_ID}" > "${key_response}"
 
-            node -e '
-              const fs = require("fs");
-              const [responsePath, publicKeyPath, keyId] = process.argv.slice(1);
-              const payload = JSON.parse(fs.readFileSync(responsePath, "utf8"));
-              const keys = Array.isArray(payload) ? payload : [payload];
-              const key = keys.find((candidate) => candidate && candidate.id === keyId);
-              if (!key || typeof key.public_key !== "string" || key.public_key.length === 0) {
-                throw new Error(`SecureSBOM key ${keyId} response did not include public_key`);
-              }
-              fs.writeFileSync(publicKeyPath, key.public_key.endsWith("\n") ? key.public_key : `${key.public_key}\n`);
-            ' "${key_response}" "${public_key_file}" "${INPUTS_SECURESBOM_PUB_KEY_ID}"
+            jq -er --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" '
+              (if type == "array" then .[] else . end)
+              | select(.id == $key_id)
+              | .public_key
+              | select(type == "string" and length > 0)
+            ' "${key_response}" > "${public_key_file}"
 
             rm -f "${sign_request}" "${sign_response}" "${digest_request}" "${digest_response}" "${key_response}"
             SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}]}'
+            if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'sbom' ]]; then
+              SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-signature.json", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DETACHED"}]}'
+            fi
             if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'digest' ]]; then
               SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-digest.sig", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DIGEST"}, {"key":"hashAlgorithm","value":"sha256"}]}'
             fi
