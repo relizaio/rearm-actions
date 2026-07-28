@@ -58,6 +58,10 @@ inputs:
     required: false
     default: 'false'
     description: "Enable SecureSBOM signing of SBOMs by ShiftLeftCyber"
+  securesbom_signing_mode:
+    required: false
+    default: 'sbom'
+    description: "SecureSBOM signing mode: sbom uploads the SBOM for detached signing, digest sends only a SHA-256 digest and attaches a detached signature"
   extract_commit_signature:
     required: false
     default: 'true'
@@ -189,49 +193,91 @@ runs:
             local sign_request="./${prefix}-securesbom-sign-request.json"
             local sign_response="./${prefix}-securesbom-sign-response.json"
             local signature_file="./${prefix}-securesbom-signature.json"
+            local digest_request="./${prefix}-securesbom-digest-sign-request.json"
+            local digest_response="./${prefix}-securesbom-digest-sign-response.json"
+            local digest_signature="./${prefix}-securesbom-digest.sig"
+            local digest_signature_algorithm=""
             local key_response="./${prefix}-securesbom-key-response.json"
+            local public_key_file="./${prefix}-securesbom-public-key.pem"
 
             command -v jq >/dev/null || {
               echo "jq is required for SecureSBOM signing response validation" >&2
               exit 1
             }
 
-            jq -n --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" --slurpfile sbom "${bom_file}" \
-              '{key_id: $key_id, pretty: false, detached: true, sbom: $sbom[0]}' > "${sign_request}"
+            if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'sbom' ]]; then
+              jq -n --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" --slurpfile sbom "${bom_file}" \
+                '{key_id: $key_id, pretty: false, detached: true, sbom: $sbom[0]}' > "${sign_request}"
 
-            curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v2/sbom/sign" \
-              --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
-              --header "Content-Type: application/json" \
-              --data-binary "@${sign_request}" > "${sign_response}"
+              curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v2/sbom/sign" \
+                --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
+                --header "Content-Type: application/json" \
+                --data-binary "@${sign_request}" > "${sign_response}"
 
-            jq -e --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" '
-              . as $response
-              | if $response.detached != true then
-                  error("SecureSBOM v2 sign response was not detached")
-                elif $response.sbom_type == "cyclonedx" then
-                  if ($response.signed_sbom | type) != "object" then
-                    error("SecureSBOM CycloneDX detached response did not include a signature object")
-                  elif ($response.signed_sbom.value | type) != "string" or ($response.signed_sbom.value | length) == 0 then
-                    error("SecureSBOM CycloneDX detached signature object did not include value")
-                  elif ($response.signed_sbom.keyId // $key_id) != $key_id then
-                    error("SecureSBOM CycloneDX detached signature keyId did not match requested key")
+              jq -e --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" '
+                . as $response
+                | if $response.detached != true then
+                    error("SecureSBOM v2 sign response was not detached")
+                  elif $response.sbom_type == "cyclonedx" then
+                    if ($response.signed_sbom | type) != "object" then
+                      error("SecureSBOM CycloneDX detached response did not include a signature object")
+                    elif ($response.signed_sbom.value | type) != "string" or ($response.signed_sbom.value | length) == 0 then
+                      error("SecureSBOM CycloneDX detached signature object did not include value")
+                    elif ($response.signed_sbom.keyId // $key_id) != $key_id then
+                      error("SecureSBOM CycloneDX detached signature keyId did not match requested key")
+                    else
+                      $response.signed_sbom
+                    end
+                  elif $response.sbom_type == "spdx" then
+                    if ($response.signature_b64 | type) != "string" or ($response.signature_b64 | length) == 0 then
+                      error("SecureSBOM SPDX detached response did not include signature_b64")
+                    else
+                      {
+                        signature_b64: $response.signature_b64,
+                        algorithm: $response.algorithm,
+                        keyId: $key_id
+                      }
+                    end
                   else
-                    $response.signed_sbom
+                    error("SecureSBOM v2 sign response used an unsupported sbom_type")
                   end
-                elif $response.sbom_type == "spdx" then
-                  if ($response.signature_b64 | type) != "string" or ($response.signature_b64 | length) == 0 then
-                    error("SecureSBOM SPDX detached response did not include signature_b64")
-                  else
-                    {
-                      signature_b64: $response.signature_b64,
-                      algorithm: $response.algorithm,
-                      keyId: $key_id
-                    }
-                  end
+              ' "${sign_response}" > "${signature_file}"
+            elif [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'digest' ]]; then
+              local digest_value
+              digest_value=$(openssl dgst -sha256 -binary "${bom_file}" | base64 | tr -d '\n')
+
+              jq -n \
+                --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" \
+                --arg digest "${digest_value}" \
+                '{key_id: $key_id, hash_algorithm: "sha256", digest: $digest}' > "${digest_request}"
+
+              curl --fail --silent --show-error --location "${INPUTS_SECURESBOM_HOST}/api/v1/digest/sign" \
+                --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
+                --header "Content-Type: application/json" \
+                --data-binary "@${digest_request}" > "${digest_response}"
+
+              jq -er --arg key_id "${INPUTS_SECURESBOM_PUB_KEY_ID}" '
+                if .key_id != $key_id then
+                  error("SecureSBOM digest sign response key_id did not match requested key")
+                elif (.signature | type) != "string" or (.signature | length) == 0 then
+                  error("SecureSBOM digest sign response did not include signature")
                 else
-                  error("SecureSBOM v2 sign response used an unsupported sbom_type")
+                  .signature
                 end
-            ' "${sign_response}" > "${signature_file}"
+              ' "${digest_response}" > "${digest_signature}"
+
+              digest_signature_algorithm="$(jq -r '
+                (.algorithm // .signature_algorithm // empty)
+                | select(type == "string" and length > 0)
+              ' "${digest_response}")"
+              if [[ -n "${digest_signature_algorithm}" && ! "${digest_signature_algorithm}" =~ ^[A-Za-z0-9_.+-]+$ ]]; then
+                echo "SecureSBOM digest sign response included an invalid signature algorithm value" >&2
+                exit 1
+              fi
+            else
+              echo "Unsupported SecureSBOM signing mode: ${INPUTS_SECURESBOM_SIGNING_MODE}. Expected 'sbom' or 'digest'." >&2
+              exit 1
+            fi
 
             curl --fail --silent --show-error --location --get "${INPUTS_SECURESBOM_HOST}/api/v1/keys" \
               --header "X-API-Key: ${INPUTS_SECURESBOM_API_KEY}" \
@@ -242,10 +288,20 @@ runs:
               | select(.id == $key_id)
               | .public_key
               | select(type == "string" and length > 0)
-            ' "${key_response}" > "./${prefix}-securesbom-public-key.pem"
+            ' "${key_response}" > "${public_key_file}"
 
-            rm -f "${sign_request}" "${sign_response}" "${key_response}"
-            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}]},{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-signature.json", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DETACHED"}]}'
+            rm -f "${sign_request}" "${sign_response}" "${digest_request}" "${digest_response}" "${key_response}"
+            SIGN_RESULT+=', "artifacts": [{"type": "PUBLIC_KEY","filePath": "./'"${prefix}"'-securesbom-public-key.pem", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}]}'
+            if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'sbom' ]]; then
+              SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-signature.json", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DETACHED"}]}'
+            fi
+            if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'digest' ]]; then
+              SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-digest.sig", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DIGEST"}, {"key":"io.reliza.securesbom.hash_algorithm","value":"sha256"}'
+              if [[ -n "${digest_signature_algorithm}" ]]; then
+                SIGN_RESULT+=', {"key":"io.reliza.securesbom.signature_algorithm","value":"'"${digest_signature_algorithm}"'"}'
+              fi
+              SIGN_RESULT+=']}'
+            fi
             has_artifacts=true
           fi
 
@@ -422,6 +478,7 @@ runs:
       env:
         INPUTS_REPO_PATH: ${{ inputs.repo_path }}
         INPUTS_ENABLE_SECURESBOM: ${{ inputs.enable_securesbom }}
+        INPUTS_SECURESBOM_SIGNING_MODE: ${{ inputs.securesbom_signing_mode }}
         INPUTS_SECURESBOM_HOST: ${{ inputs.securesbom_host }}
         INPUTS_SECURESBOM_API_KEY: ${{ inputs.securesbom_api_key }}
         INPUTS_SECURESBOM_PUB_KEY_ID: ${{ inputs.securesbom_pub_key_id }}
