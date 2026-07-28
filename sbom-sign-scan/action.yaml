@@ -196,6 +196,7 @@ runs:
             local digest_request="./${prefix}-securesbom-digest-sign-request.json"
             local digest_response="./${prefix}-securesbom-digest-sign-response.json"
             local digest_signature="./${prefix}-securesbom-digest.sig"
+            local digest_signature_algorithm=""
             local key_response="./${prefix}-securesbom-key-response.json"
             local public_key_file="./${prefix}-securesbom-public-key.pem"
 
@@ -264,6 +265,15 @@ runs:
                   .signature
                 end
               ' "${digest_response}" > "${digest_signature}"
+
+              digest_signature_algorithm="$(jq -r '
+                (.algorithm // .signature_algorithm // empty)
+                | select(type == "string" and length > 0)
+              ' "${digest_response}")"
+              if [[ -n "${digest_signature_algorithm}" && ! "${digest_signature_algorithm}" =~ ^[A-Za-z0-9_.+-]+$ ]]; then
+                echo "SecureSBOM digest sign response included an invalid signature algorithm value" >&2
+                exit 1
+              fi
             else
               echo "Unsupported SecureSBOM signing mode: ${INPUTS_SECURESBOM_SIGNING_MODE}. Expected 'sbom' or 'digest'." >&2
               exit 1
@@ -286,7 +296,11 @@ runs:
               SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-signature.json", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DETACHED"}]}'
             fi
             if [[ "${INPUTS_SECURESBOM_SIGNING_MODE}" == 'digest' ]]; then
-              SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-digest.sig", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DIGEST"}, {"key":"hashAlgorithm","value":"sha256"}]}'
+              SIGN_RESULT+=',{"type": "SIGNATURE","filePath": "./'"${prefix}"'-securesbom-digest.sig", "tags":[{"key":"io.reliza.signing_platform","value":"SECURESBOM"}, {"key":"io.reliza.securesbom.pub_key_id","value":"'"${INPUTS_SECURESBOM_PUB_KEY_ID}"'"}, {"key":"io.reliza.securesbom.signing_mode","value":"DIGEST"}, {"key":"io.reliza.securesbom.hash_algorithm","value":"sha256"}'
+              if [[ -n "${digest_signature_algorithm}" ]]; then
+                SIGN_RESULT+=', {"key":"io.reliza.securesbom.signature_algorithm","value":"'"${digest_signature_algorithm}"'"}'
+              fi
+              SIGN_RESULT+=']}'
             fi
             has_artifacts=true
           fi
