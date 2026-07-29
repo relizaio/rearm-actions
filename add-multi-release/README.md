@@ -27,6 +27,13 @@ Artifacts reference local files via their `filePath` field (resolved relative
 to `working_directory`); the CLI reads and uploads each file — you do not
 embed file bytes in the JSON.
 
+Because the batch is passed through verbatim, every `ReleaseInputProg` field
+works here without a matching action input. Notably `perspective`: pair it with
+`createComponentIfMissing` when your API key is scoped to a perspective rather
+than the whole organization, or component creation is authorized org-wide and
+the key is rejected with `Not authorized`. It is a per-release field, so set it
+on each element that may create a component. ReARM Pro only.
+
 Two distinct "paths" are in play, do not conflate them: `working_directory`
 is the **action input** — the process directory the CLI runs from, where
 `filePath`s resolve — whereas `repoPath` is a **per-release JSON field** that

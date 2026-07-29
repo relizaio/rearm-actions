@@ -32,6 +32,7 @@ GitHub Action to initialize ReARM release flow. This action checks for changes s
 | `create_component` | Create component if it doesn't exist | No | `false` |
 | `create_component_version_schema` | Version schema for new component | No | `semver` |
 | `create_component_branch_version_schema` | Branch version schema for new component | No | `semver` |
+| `perspective` | Perspective UUID to create the component in. Only used with `create_component`. See [Perspective-scoped API keys](#perspective-scoped-api-keys). ReARM Pro only. | No | - |
 | `allow_rebuild` | Allow rebuild of existing version | No | `false` |
 | `enable_invisible_char_check` | Scan files changed since the previous release for invisible/trojan-source characters with [anti-trojan-source](https://www.npmjs.com/package/anti-trojan-source). Fails the build on any finding. See [Invisible Character Check](#invisible-character-check). | No | `false` |
 
@@ -134,6 +135,25 @@ jobs:
           create_component: "true"
           create_component_version_schema: "semver"
 ```
+
+#### Perspective-scoped API keys
+
+`create_component` on its own requires an API key with organization-wide write
+permission. ReARM authorizes the creation against the whole organization, so a
+FREEFORM key scoped to a single perspective is rejected with `Not authorized` —
+the perspective is *not* inferred from the key.
+
+If your key is perspective-scoped, pass the perspective explicitly. The new
+component is then created inside it, and the key only needs `WRITE` on that
+perspective:
+
+```yaml
+          create_component: "true"
+          perspective: ${{ vars.REARM_PERSPECTIVE }}
+```
+
+The value is ignored once the component exists, so it is safe to leave set on
+every build. Perspectives are a ReARM Pro concept; omit this on ReARM CE.
 
 ### Monorepo Usage
 
