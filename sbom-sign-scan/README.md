@@ -30,6 +30,7 @@ This action performs SBOM generation and signing, and runs CodeQL analysis. It o
 | `deliverable_type` | `CONTAINER` | Type of artifact created by this release [CONTAINER, FILE] |
 | `enable_sbom` | `false` | Generates SBOM and stores it along with the artifact |
 | `source_code_sbom_type` | `none` | Source code SBOM type: npm, helm, custom, other, none |
+| `disable_maven_search` | `false` | Set `SEARCH_MAVEN_ORG=false` for the container SBOM cdxgen run, skipping search.maven.org lookups for jars missing pom metadata (avoids stalls when Maven search is slow or unavailable) |
 | `registry_username` | | Username for image registry |
 | `registry_password` | | Password for image registry |
 | `registry_host` | | Host for image registry (null for DockerHub) |

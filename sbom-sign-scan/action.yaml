@@ -28,6 +28,10 @@ inputs:
     required: false
     default: 'none'
     description: "Generates SBOM based on source code analysis, possible values: npm, helm, custom, go, other, none. Use 'custom' to follow Dockerfile.sbom with expected output in /sbom/sbom.json"
+  disable_maven_search:
+    required: false
+    default: 'false'
+    description: "When true, sets SEARCH_MAVEN_ORG=false for the container SBOM cdxgen run so jars missing pom metadata are not looked up on search.maven.org. Avoids long stalls when Maven search is slow or unavailable."
   registry_username:
     description: "Username for image registry"
     required: false
@@ -379,6 +383,13 @@ runs:
         if [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_DELIVERABLE_TYPE} == 'CONTAINER' ]]
         then
           export FETCH_LICENSE=false
+          if [[ ${INPUTS_DISABLE_MAVEN_SEARCH} == 'true' ]]
+          then
+            # Jars in the image already have pom-derived coordinates in the source SBOM;
+            # the per-jar search.maven.org lookup for jars missing metadata only stalls
+            # (observed 96s timing out before "Maven search appears to be unavailable").
+            export SEARCH_MAVEN_ORG=false
+          fi
           pip install blint==3.1.2
           cdxgen docker-${INPUTS_REARM_SHORT_VERSION}.tar -t docker --lifecycle build --project-version "${INPUTS_REARM_FULL_VERSION}" --spec-version 1.6 -o docker.cdx.bom.raw.json
           du -h ./docker.cdx.bom.raw.json
@@ -488,6 +499,7 @@ runs:
         INPUTS_REARM_SHORT_VERSION: ${{inputs.rearm_short_version}}
         INPUTS_ENABLE_SBOM: ${{inputs.enable_sbom}}
         INPUTS_SOURCE_CODE_SBOM_TYPE: ${{inputs.source_code_sbom_type}}
+        INPUTS_DISABLE_MAVEN_SEARCH: ${{ inputs.disable_maven_search }}
         INPUTS_REARM_FULL_VERSION: ${{ inputs.rearm_full_version }}
         INPUTS_ENABLE_CODEQL: ${{ inputs.enable_codeql }}
         INPUTS_CODEQL_LANGUAGE: ${{inputs.codeql_language}}
