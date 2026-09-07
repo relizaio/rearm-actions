@@ -4,7 +4,7 @@ const os = require('os');
 // does not override `version` (+ `digest`). Kept in code rather than as
 // an action.yaml input default so the override rule can distinguish
 // "not set" from "set to the default" — see setup() in ../index.js.
-const DEFAULT_VERSION = '26.05.20';
+const DEFAULT_VERSION = '26.09.1';
 
 // sha256 of each published install zip for DEFAULT_VERSION, keyed by the
 // zip filename. Source: the sha256sums.txt published alongside the
@@ -13,20 +13,20 @@ const DEFAULT_VERSION = '26.05.20';
 // they must also pass the matching `digest` (both or neither — enforced
 // in setup()), so this map only needs to cover the pinned default.
 const DIGESTS = {
-  'rearm-26.05.20-darwin-amd64.zip':  '7bcb9af4a1a57ffeeeecc36fec808ad50ad8ea05cd59b56f95e2bddf1bf03b0e',
-  'rearm-26.05.20-darwin-arm64.zip':  '611600bb589448ab786e2706eb634dc74a67448e4c5a9eb34fc3ad53d23ac754',
-  'rearm-26.05.20-freebsd-386.zip':   '43a32aa8762ed1c92b12a3d91ac0431d692fa089b5a134e1fe4d805a6a6d3a93',
-  'rearm-26.05.20-freebsd-amd64.zip': '8e207e38bdda46c68c7d46346265c86f70b0060118a3c65e61e1a072cc659bd8',
-  'rearm-26.05.20-freebsd-arm.zip':   '1b15b284303ea3d1e052e9c05d022c662eba8b3b6b5b49fb191e8917b1cb707d',
-  'rearm-26.05.20-linux-386.zip':     '1d436d8b87686087aea68145bea5886f4f8cb03b9d73dbcc03317c0f5c69ec93',
-  'rearm-26.05.20-linux-amd64.zip':   '779659953b95ee8271f64cfdec451a830f9d1116715a3df4b3151ca18846b3f2',
-  'rearm-26.05.20-linux-arm.zip':     '37fdccf6ea5e2075e842283573f4db6977c856b59ec89380fbcac47ea0064614',
-  'rearm-26.05.20-linux-arm64.zip':   'bac3c1ec8677013f6f8790111d1825ac56e3ebc2664e4f4d8ce7bf4e804723e5',
-  'rearm-26.05.20-openbsd-386.zip':   '219164a1d28c9d934b5f8d7ebde8aadea9a6619ac0d24895dca24f413903e352',
-  'rearm-26.05.20-openbsd-amd64.zip': '942e7ec22ff051e64f0d3a5476dca0e8c3fa12a886a4744da9d8ce5ad24cefa6',
-  'rearm-26.05.20-solaris-amd64.zip': '685c0cdb00cd732b7745eb19f8c1aacbc52395f03e7be4d961841085b8b77d33',
-  'rearm-26.05.20-windows-386.zip':   '7ed10d6bf7962b8f02ccab512cc426d5eabd9b92b602609c0321990efe67e66e',
-  'rearm-26.05.20-windows-amd64.zip': '840b504781ed5f627b34ada958a912f82b307e7b45d46af42b65928bd8bdb700',
+  'rearm-26.09.1-darwin-amd64.zip':  '6bc307fcf01bdccf900a6cc90716f29d004b83250ac8c70b3b1386d9ab46353b',
+  'rearm-26.09.1-darwin-arm64.zip':  '296c41599d739ccba6d5ea595f5a6c7a3e91a6f3b93f0c5519673c87bc1712fa',
+  'rearm-26.09.1-freebsd-386.zip':   '3b9b1a77533c1a8260950d353a4b4d923156f0b9f250acb10da2659d2a1f6132',
+  'rearm-26.09.1-freebsd-amd64.zip': '46b06ef8035658f7d123fc0eb5ba4d5cf14e5f0f86deba130b0623a3d4d171b6',
+  'rearm-26.09.1-freebsd-arm.zip':   '23b8e1f971ea362643f8508c6f1aefaca36f92ab80125684bfd0b860e4cd38b7',
+  'rearm-26.09.1-linux-386.zip':     '445b084eeb3c704624a085026fd3eb9965546cae23adba67d97fbddb94c200ac',
+  'rearm-26.09.1-linux-amd64.zip':   '9b44da897b80f9546bb005a2c1ca6a31bfda641c2b6cc86c21b129015df0446a',
+  'rearm-26.09.1-linux-arm.zip':     '6624650d6c0fe5fae04b6fe4cc943071b3c1577c2e6ee9a0c056337230b422d1',
+  'rearm-26.09.1-linux-arm64.zip':   '98dfbae123247634efcf9a62ec9f98c258c87d01e777094dfc013190a138cde1',
+  'rearm-26.09.1-openbsd-386.zip':   'ed3387b8e00334143cc2b23451d92d7101cbcc05b10a9d2f04385ad2b9f90912',
+  'rearm-26.09.1-openbsd-amd64.zip': '88ec3e19074bf8cfb84fe194f2345a3cb21c60f8c0050154733768cc06bf4f16',
+  'rearm-26.09.1-solaris-amd64.zip': 'b3870c2143718aa3f295d75fa23a0df6a581bf0b4371ad6742b04fa1fd10bba6',
+  'rearm-26.09.1-windows-386.zip':   '258b153f59a3f1fd2f266ea21beeaa88f8cd60a9c19a60249b153266a63502aa',
+  'rearm-26.09.1-windows-amd64.zip': 'f78f03bacec640f9349beca7acf0c3dd7699daa91f23ba7b0c4d661e69eeebf8',
 };
 
 // arch in [arm, x32, x64...] (https://nodejs.org/api/os.html#os_os_arch)
@@ -54,7 +54,7 @@ function getDownloadObject(version) {
   const extension = 'zip';
   const assetName = `${ filename }.${ extension }`;
   const binPath = filename;
-  const url = `https://d7ge14utcyki8.cloudfront.net/rearm-download/${ version }/${ assetName }`;
+  const url = `https://cdn.rearmhq.com/rearm-download/${ version }/${ assetName }`;
   return {
     url,
     binPath,
