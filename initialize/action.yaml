@@ -251,10 +251,13 @@ runs:
             #   * "Component not found for VCS UUID '<uuid>' and repo path '<path>'"
             #     — the VCS URI is registered (sibling job in a monorepo created
             #     it) but no component is mapped to *this* repo path yet
-            # Both mean "there is no prior release for this component" — let the
+            #   * a bare "Component not found" — the same outcome reported without
+            #     the VCS detail, which resolveComponentResolutionFromInput returns
+            #     when the key carries no organization to resolve the VCS URI under
+            # All three mean "there is no prior release for this component" — let the
             # calling fallback set DO_BUILD=true so the create flow in
             # addrelease/getversion can run. Surface every other error.
-            if echo "$latest_output" | grep -qE "VCS repository .* not found|Component not found for VCS"; then
+            if echo "$latest_output" | grep -qE "VCS repository .* not found|Component not found"; then
               echo "No previous release found for this component (first build):" >&2
               echo "$latest_output" >&2
               return 1
