@@ -115,6 +115,33 @@ jobs:
 - **jq**: Required for JSON parsing
 - **Git history**: Use `fetch-depth: 0` in checkout for full history (required for change detection and branch sync)
 
+## Authenticating with the GitHub identity token (no secret)
+
+Instead of an API key id and secret, a job can authenticate to ReARM with the
+identity token GitHub issues to it, once an organization admin has added a trust
+rule for the repository in ReARM (Organization Settings, Programmatic Access,
+Federated Identities). Nothing is stored in the repository's secrets:
+
+```yaml
+permissions:
+  contents: read
+  id-token: write
+steps:
+  - uses: relizaio/rearm-actions/setup-cli@<ref>
+  - uses: relizaio/rearm-actions/initialize@<ref>
+    with:
+      rearm_auth: github-oidc
+      rearm_api_url: https://your.rearm.instance
+```
+
+Leave `rearm_api_id` and `rearm_api_key` out. The CLI requests the identity
+token with the ReARM URL as audience, exchanges it at the ReARM token endpoint
+for a one-hour access token, and repeats that on its own when needed. Set
+`rearm_org` (the ReARM organization uuid) only when several organizations trust
+the same repository. With `rearm_auth` left empty the CLI picks the mode from
+the credentials present: a key pair when given, otherwise the identity token in
+a job that has `id-token: write`.
+
 ## Input Value Requirements
 
 Since `v1.7.0`, every action consumes its inputs through step-level `env:`
