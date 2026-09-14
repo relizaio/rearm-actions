@@ -5,11 +5,23 @@ branding:
   color: 'green'
 inputs:
   rearm_api_id:
-    description: "ReARM API Key ID"
-    required: true
+    description: "ReARM API Key ID (leave empty with rearm_auth: github-oidc)"
+    required: false
   rearm_api_key:
-    description: "ReARM API Key"
-    required: true
+    description: "ReARM API Key (leave empty with rearm_auth: github-oidc)"
+    required: false
+  rearm_api_url:
+    description: "ReARM API URL"
+    required: false
+    default: 'https://demo.rearmhq.com'
+  rearm_auth:
+    description: "Credential mode passed to the CLI: key (rearm_api_id and rearm_api_key), or github-oidc (the identity token GitHub issues to the job, no secret; the job needs permissions id-token: write and the ReARM organization a trust rule for this repository). Empty picks the mode from the credentials present."
+    required: false
+    default: ""
+  rearm_org:
+    description: "ReARM organization uuid, for github-oidc only when several organizations trust the same repository"
+    required: false
+    default: ""
   image_full_name:
     description: "Full name of the Docker image with registry prefix"
     required: true
@@ -28,10 +40,6 @@ inputs:
   rearm_build_lifecycle:
     description: "Build lifecycle - [DRAFT | ASSEMBLED | REJECTED]"
     required: true
-  rearm_api_url:
-    description: "ReARM API URL"
-    required: false
-    default: 'https://demo.rearmhq.com'
   deliverable_type:
     description: "Type of artifact created by this release [CONTAINER, FILE]"
     required: false
@@ -249,6 +257,8 @@ runs:
         GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         INPUTS_REARM_API_KEY: ${{ inputs.rearm_api_key }}
         INPUTS_REARM_API_ID: ${{ inputs.rearm_api_id }}
+        REARM_AUTH: ${{ inputs.rearm_auth }}
+        REARM_ORG: ${{ inputs.rearm_org }}
     - name: Fail build if rearm status is rejected
       shell: bash
       run: |
