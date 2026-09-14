@@ -222,7 +222,6 @@ runs:
           echo -n '--odelcimeta "GitHub Actions" ' >> /tmp/reliza/rearm_command
           echo -n "--odeltype ${INPUTS_DELIVERABLE_TYPE} " >> /tmp/reliza/rearm_command
 
-          echo -n "--odeldigests ${INPUTS_IMAGE_DIGEST} " >> /tmp/reliza/rearm_command
           if [[ "${INPUTS_IMAGE_DIGEST}" != "" ]]
           then
             echo -n "--odeldigests ${INPUTS_IMAGE_DIGEST} " >> /tmp/reliza/rearm_command
