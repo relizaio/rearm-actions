@@ -5,11 +5,11 @@ branding:
   color: 'blue'
 inputs:
   image_full_name:
-    description: "Full name of the Docker image with registry prefix"
-    required: true
+    description: "Full name of the Docker image with registry prefix. Leave empty for a component that ships no deliverable, such as a library whose CI only records source-side evidence; the container SBOM, the deliverable signing and the purl lookup are then skipped and odelartsjson comes back empty."
+    required: false
   image_digest:
-    description: "SHA 256 digest of the image artifact"
-    required: true
+    description: "SHA 256 digest of the image artifact. Only meaningful alongside image_full_name; supplying it without one is an error."
+    required: false
   rearm_short_version:
     description: "Docker and filesystem safe version from ReARM for this release"
     required: true
@@ -88,15 +88,39 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Validate deliverable inputs
+      shell: bash
+      env:
+        INPUTS_IMAGE_FULL_NAME: ${{ inputs.image_full_name }}
+        INPUTS_IMAGE_DIGEST: ${{ inputs.image_digest }}
+      run: |
+        # An empty image_full_name means this component ships no deliverable, so
+        # every container-side step below is skipped and only source-side
+        # evidence is produced. A digest, however, describes a deliverable that
+        # was built: reaching here with one means the caller lost the image name
+        # rather than that it has nothing to ship, so fail rather than silently
+        # dropping it. Checked first so the failure costs seconds, not a CodeQL
+        # run. Mirrors the same guard in the finalize action.
+        if [[ -z "${INPUTS_IMAGE_FULL_NAME}" && -n "${INPUTS_IMAGE_DIGEST}" ]]; then
+          echo "ERROR: image_digest supplied without image_full_name." >&2
+          echo "  A digest identifies the contents of a deliverable and cannot be scanned without one." >&2
+          echo "  Set image_full_name to the deliverable being released, or drop image_digest to produce" >&2
+          echo "  source-side evidence only." >&2
+          exit 1
+        fi
+        if [[ -z "${INPUTS_IMAGE_FULL_NAME}" ]]; then
+          echo "image_full_name is empty - no deliverable; container SBOM, deliverable signing and purl are skipped."
+        fi
+
     - name: Login to DockerHub
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-      if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' && inputs.registry_host == null }}
+      if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' && inputs.image_full_name != '' && inputs.registry_host == null }}
       with:
         username: ${{inputs.registry_username}}
         password: ${{inputs.registry_password}}
     - name: Login to Container Registry
       uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
-      if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' && inputs.registry_host != null }}
+      if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' && inputs.image_full_name != '' && inputs.registry_host != null }}
       with:
         registry: ${{inputs.registry_host}}
         username: ${{inputs.registry_username}}
@@ -104,7 +128,7 @@ runs:
     - id: docker-pull-save
       name: Pull and Save Docker Image as tar
       shell: bash
-      if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' }}
+      if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER' && inputs.image_full_name != '' }}
       run: |
         cd ${INPUTS_REPO_PATH}
         docker pull ${INPUTS_IMAGE_FULL_NAME}@${INPUTS_IMAGE_DIGEST}
@@ -144,7 +168,7 @@ runs:
       name: Install Cosign
       uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
     - id: cosign-sign
-      if: ${{ inputs.enable_public_cosign_sigstore == 'true' && inputs.deliverable_type == 'CONTAINER' }}
+      if: ${{ inputs.enable_public_cosign_sigstore == 'true' && inputs.deliverable_type == 'CONTAINER' && inputs.image_full_name != '' }}
       name: Sign container deliverable with cosign
       shell: bash
       run: |
@@ -340,7 +364,7 @@ runs:
         purl=""
 
         # Establish purl for CONTAINER type
-        if [[ "${INPUTS_DELIVERABLE_TYPE}" == 'CONTAINER' ]]; then
+        if [[ "${INPUTS_DELIVERABLE_TYPE}" == 'CONTAINER' && -n "${INPUTS_IMAGE_FULL_NAME}" ]]; then
           url4purl=oci://${INPUTS_IMAGE_FULL_NAME}:${INPUTS_REARM_SHORT_VERSION}
           docker pull registry.relizahub.com/library/url2purl-cli:25.07.0@sha256:05f849cfedbc31c6c8d11819e42efb4eb5e95198696978ca1ad84b010d52e952
           purl=$(docker run --rm registry.relizahub.com/library/url2purl-cli:25.07.0@sha256:05f849cfedbc31c6c8d11819e42efb4eb5e95198696978ca1ad84b010d52e952 $url4purl)
@@ -390,7 +414,7 @@ runs:
           scearts+=']'
         fi
 
-        if [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_DELIVERABLE_TYPE} == 'CONTAINER' ]]
+        if [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_DELIVERABLE_TYPE} == 'CONTAINER' && -n "${INPUTS_IMAGE_FULL_NAME}" ]]
         then
           export FETCH_LICENSE=false
           pip install blint==3.1.2
