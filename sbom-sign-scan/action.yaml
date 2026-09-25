@@ -113,7 +113,12 @@ runs:
         INPUTS_REPO_PATH: ${{ inputs.repo_path }}
         INPUTS_IMAGE_FULL_NAME: ${{inputs.image_full_name}}
         INPUTS_IMAGE_DIGEST: ${{inputs.image_digest}}
-        INPUTS_REARM_SHORT_VERSION: ${{inputs.rearm_short_version}} 
+        INPUTS_REARM_SHORT_VERSION: ${{inputs.rearm_short_version}}
+    - id: setup-python
+      if: ${{ inputs.enable_sbom == 'true' && inputs.deliverable_type == 'CONTAINER'}}
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: '3.12'
     - id: install-cdxgen
       if: ${{ inputs.enable_sbom == 'true' }}
       name: Install cdxgen cli
@@ -393,7 +398,8 @@ runs:
         if [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_DELIVERABLE_TYPE} == 'CONTAINER' ]]
         then
           export FETCH_LICENSE=false
-          pip install blint==3.1.2
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install blint==3.4.0
           cdxgen docker-${INPUTS_REARM_SHORT_VERSION}.tar -t docker --lifecycle build --project-version "${INPUTS_REARM_FULL_VERSION}" --spec-version 1.6 -o docker.cdx.bom.raw.json
           du -h ./docker.cdx.bom.raw.json
           rearm bomutils fixpurl -f ./docker.cdx.bom.raw.json -o ./docker.cdx.bom.json --newpurl "${purl}"
