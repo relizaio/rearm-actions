@@ -129,11 +129,11 @@ runs:
         case "$(uname -m)" in
           x86_64)
             CDXGEN_ARCH="amd64"
-            CDXGEN_SHA256="b9575914c36e601296d75f322123643b2531251235159f51578b507da6d9931f"
+            CDXGEN_SHA256="4f732b6b69596171cdf3904555fe7f2972b584fdef05ddd7c0800a91c45bfe73"
             ;;
           aarch64|arm64)
             CDXGEN_ARCH="arm64"
-            CDXGEN_SHA256="a6b72addf1478d274e11cc53099545b88344c2fb53cc362842c76f48d0bf442b"
+            CDXGEN_SHA256="39877f738a5d3566e1554846daba54e64f26bfcedeae44eb78fb756ccd9216ec"
             ;;
           *)
             echo "cdxgen install: unsupported runner architecture $(uname -m)" >&2
