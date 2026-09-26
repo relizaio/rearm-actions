@@ -777,6 +777,11 @@ runs:
         else
           echo "No build needed"
         fi
+    - name: Set up Node for anti-trojan-source
+      if: ${{ inputs.enable_invisible_char_check == 'true' && steps.initialize.outputs.do_build == 'true' }}
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: '24'
     - id: invisible-char-check
       if: ${{ inputs.enable_invisible_char_check == 'true' && steps.initialize.outputs.do_build == 'true' }}
       name: Scan for invisible/trojan source characters
@@ -797,7 +802,7 @@ runs:
 
         if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ] && git cat-file -t "$LAST_COMMIT" >/dev/null 2>&1; then
           echo "Scanning files changed in ${LAST_COMMIT}..${COMMIT} (added/modified only)"
-          git diff -z --name-only --diff-filter=AM "$LAST_COMMIT" "$COMMIT" -- . > "$FILES_LIST"
+          git diff -z --name-only --relative --diff-filter=AM "$LAST_COMMIT" "$COMMIT" -- . > "$FILES_LIST"
         else
           if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
             echo "last_commit ${LAST_COMMIT} not available locally (shallow checkout?) — scanning all tracked files."
