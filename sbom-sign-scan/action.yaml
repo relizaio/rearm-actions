@@ -391,7 +391,7 @@ runs:
           PREFER_MAVEN_DEPS_TREE=false \
           MVN_ARGS="-DincludeTestScope=${INPUTS_INCLUDE_TEST_SCOPE}" \
           FETCH_LICENSE=false \
-            env -u GITHUB_ACTIONS -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL
+            env -u GITHUB_ACTIONS -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
             cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t java -o fs.cdx.bom.json
           if [[ -f "${RUNNER_TEMP}/pom.xml.orig" ]]; then mv "${RUNNER_TEMP}/pom.xml.orig" pom.xml; fi
           # cdxgen runs mvn with -fn (fail never): refuse an empty or unversioned SBOM instead of shipping it
