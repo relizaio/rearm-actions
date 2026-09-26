@@ -367,7 +367,7 @@ runs:
         elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'go' ]]
         then      
           cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t go -o fs.cdx.bom.json
-        elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'go' ]]
+        elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'java' ]]
         then
           cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t java -o fs.cdx.bom.json
         elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'other' ]]
