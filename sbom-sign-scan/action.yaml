@@ -27,7 +27,7 @@ inputs:
   source_code_sbom_type:
     required: false
     default: 'none'
-    description: "Generates SBOM based on source code analysis, possible values: npm, helm, custom, go, other, none. Use 'custom' to follow Dockerfile.sbom with expected output in /sbom/sbom.json"
+    description: "Generates SBOM based on source code analysis, possible values: npm, helm, go, java, custom, other, none. Use 'custom' to follow Dockerfile.sbom with expected output in /sbom/sbom.json"
   registry_username:
     description: "Username for image registry"
     required: false
@@ -125,7 +125,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        CDXGEN_VERSION="v13.1.0"
+        CDXGEN_VERSION="v13.2.0"
         case "$(uname -m)" in
           x86_64)
             CDXGEN_ARCH="amd64"
@@ -367,6 +367,9 @@ runs:
         elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'go' ]]
         then      
           cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t go -o fs.cdx.bom.json
+        elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'go' ]]
+        then
+          cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t java -o fs.cdx.bom.json
         elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'other' ]]
         then      
           cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -o fs.cdx.bom.json
