@@ -206,6 +206,10 @@ runs:
       run: |
         cd ${INPUTS_REPO_PATH}
 
+        # cdxgen runs project build tooling (mvn plugins, npm, go, ...); strip the job's
+        # OIDC token from its environment. cosign sign-blob below still sees it.
+        cdxgen() { env -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL cdxgen "$@"; }
+
         # Function to sign SBOM and build artifacts JSON
         # Usage: sign_sbom <bom_file> <output_prefix>
         # Returns artifacts JSON fragment via SIGN_RESULT variable
@@ -387,6 +391,7 @@ runs:
           PREFER_MAVEN_DEPS_TREE=false \
           MVN_ARGS="-DincludeTestScope=${INPUTS_INCLUDE_TEST_SCOPE}" \
           FETCH_LICENSE=false \
+            env -u GITHUB_ACTIONS -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL
             cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t java -o fs.cdx.bom.json
           if [[ -f "${RUNNER_TEMP}/pom.xml.orig" ]]; then mv "${RUNNER_TEMP}/pom.xml.orig" pom.xml; fi
           # cdxgen runs mvn with -fn (fail never): refuse an empty or unversioned SBOM instead of shipping it
