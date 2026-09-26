@@ -802,7 +802,7 @@ runs:
 
         if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ] && git cat-file -t "$LAST_COMMIT" >/dev/null 2>&1; then
           echo "Scanning files changed in ${LAST_COMMIT}..${COMMIT} (added/modified only)"
-          git diff -z --name-only --relative --diff-filter=AM "$LAST_COMMIT" "$COMMIT" -- . > "$FILES_LIST"
+          git diff -z --name-only --relative --diff-filter=d "$LAST_COMMIT" "$COMMIT" -- . > "$FILES_LIST"
         else
           if [ -n "$LAST_COMMIT" ] && [ "$LAST_COMMIT" != "null" ]; then
             echo "last_commit ${LAST_COMMIT} not available locally (shallow checkout?) — scanning all tracked files."
