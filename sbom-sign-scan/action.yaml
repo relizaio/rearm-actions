@@ -28,6 +28,14 @@ inputs:
     required: false
     default: 'none'
     description: "Generates SBOM based on source code analysis, possible values: npm, helm, go, java, custom, other, none. Use 'custom' to follow Dockerfile.sbom with expected output in /sbom/sbom.json"
+  version_placeholder:
+    description: "java: literal in pom.xml replaced with rearm_full_version before source SBOM generation; no-op if absent"
+    required: false
+    default: 'Version_Managed_By_CI_AND_Reliza'
+  include_test_scope:
+    description: "java: include test-scope dependencies in the source SBOM"
+    required: false
+    default: 'false'
   registry_username:
     description: "Username for image registry"
     required: false
@@ -369,7 +377,24 @@ runs:
           cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t go -o fs.cdx.bom.json
         elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'java' ]]
         then
-          cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t java -o fs.cdx.bom.json
+          # Put the ReARM version (from initialize) into pom.xml so the SBOM root carries it; restore afterwards
+          if [[ -n "${INPUTS_VERSION_PLACEHOLDER}" ]]; then
+            cp pom.xml "${RUNNER_TEMP}/pom.xml.orig"
+            sed -i "s,${INPUTS_VERSION_PLACEHOLDER},${INPUTS_REARM_FULL_VERSION},g" pom.xml
+          fi
+          # Plugin mode: cyclonedx-maven-plugin gives hashes + full dependency graph.
+          # cdxgen hard-codes -DincludeTestScope=true; MVN_ARGS is appended after it and wins.
+          PREFER_MAVEN_DEPS_TREE=false \
+          MVN_ARGS="-DincludeTestScope=${INPUTS_INCLUDE_TEST_SCOPE}" \
+          FETCH_LICENSE=false \
+            cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t java -o fs.cdx.bom.json
+          if [[ -f "${RUNNER_TEMP}/pom.xml.orig" ]]; then mv "${RUNNER_TEMP}/pom.xml.orig" pom.xml; fi
+          # cdxgen runs mvn with -fn (fail never): refuse an empty or unversioned SBOM instead of shipping it
+          count=$(jq '.components | length' fs.cdx.bom.json)
+          root=$(jq -r '.metadata.component.purl // ""' fs.cdx.bom.json)
+          if [[ "$count" -lt 1 || -z "$root" || ( -n "${INPUTS_VERSION_PLACEHOLDER}" && "$root" == *"${INPUTS_VERSION_PLACEHOLDER}"* ) ]]; then
+            echo "::error::java source SBOM looks incomplete (components=$count root=$root)"; exit 1
+          fi
         elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'other' ]]
         then      
           cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -o fs.cdx.bom.json
@@ -509,6 +534,8 @@ runs:
         INPUTS_DELIVERABLE_TYPE: ${{inputs.deliverable_type}}
         INPUTS_IMAGE_FULL_NAME: ${{inputs.image_full_name}}
         INPUTS_REARM_SHORT_VERSION: ${{inputs.rearm_short_version}}
+        INPUTS_VERSION_PLACEHOLDER: ${{ inputs.version_placeholder }}
+        INPUTS_INCLUDE_TEST_SCOPE: ${{ inputs.include_test_scope }}
         INPUTS_ENABLE_SBOM: ${{inputs.enable_sbom}}
         INPUTS_SOURCE_CODE_SBOM_TYPE: ${{inputs.source_code_sbom_type}}
         INPUTS_REARM_FULL_VERSION: ${{ inputs.rearm_full_version }}
