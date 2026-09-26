@@ -363,7 +363,7 @@ runs:
           cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t npm -o fs.cdx.bom.json
         elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'helm' ]]
         then
-          cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecyle build --spec-version 1.6 -t helm -o fs.cdx.bom.json
+          cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t helm -o fs.cdx.bom.json
         elif [[ ${INPUTS_ENABLE_SBOM} == 'true' && ${INPUTS_SOURCE_CODE_SBOM_TYPE} == 'go' ]]
         then      
           cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t go -o fs.cdx.bom.json
