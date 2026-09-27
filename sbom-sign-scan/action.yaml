@@ -384,7 +384,7 @@ runs:
           # Put the ReARM version (from initialize) into pom.xml so the SBOM root carries it; restore afterwards
           if [[ -n "${INPUTS_VERSION_PLACEHOLDER}" ]]; then
             cp pom.xml "${RUNNER_TEMP}/pom.xml.orig"
-            sed -i "s,${INPUTS_VERSION_PLACEHOLDER},${INPUTS_REARM_FULL_VERSION},g" pom.xml
+            sed -i "s,${INPUTS_VERSION_PLACEHOLDER},${INPUTS_REARM_SHORT_VERSION},g" pom.xml
           fi
           # Plugin mode: cyclonedx-maven-plugin gives hashes + full dependency graph.
           # cdxgen hard-codes -DincludeTestScope=true; MVN_ARGS is appended after it and wins.
@@ -392,7 +392,7 @@ runs:
           MVN_ARGS="-DincludeTestScope=${INPUTS_INCLUDE_TEST_SCOPE}" \
           FETCH_LICENSE=false \
             env -u GITHUB_ACTIONS -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
-            cdxgen ./ --project-version "${INPUTS_REARM_FULL_VERSION}" --lifecycle build --spec-version 1.6 -t java -o fs.cdx.bom.json
+            cdxgen ./ --project-version "${INPUTS_REARM_SHORT_VERSION}" --lifecycle build --spec-version 1.6 -t java -o fs.cdx.bom.json
           if [[ -f "${RUNNER_TEMP}/pom.xml.orig" ]]; then mv "${RUNNER_TEMP}/pom.xml.orig" pom.xml; fi
           # cdxgen runs mvn with -fn (fail never): refuse an empty or unversioned SBOM instead of shipping it
           count=$(jq '.components | length' fs.cdx.bom.json)
