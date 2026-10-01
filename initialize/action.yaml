@@ -375,6 +375,8 @@ runs:
 
           if [ -n "$COMMITS_OUTPUT" ]; then
             COMMITS_BASE64=$(echo "$COMMITS_OUTPUT" | base64 -w 0 2>/dev/null || echo "$COMMITS_OUTPUT" | base64 2>/dev/null)
+            COMMITS_FILE=$(mktemp "${RUNNER_TEMP:-/tmp}/rearm-commits.XXXXXX")
+            printf '%s' "$COMMITS_BASE64" > "$COMMITS_FILE"
           fi
           
           if [ -n "$INPUT_VERSION" ]; then
@@ -401,8 +403,8 @@ runs:
               add_release_args+=("--date" "$COMMIT_DATE")
             fi
             
-            if [ -n "$COMMITS_BASE64" ]; then
-              add_release_args+=("--commits" "$COMMITS_BASE64")
+            if [ -n "$COMMITS_FILE" ]; then
+              add_release_args+=("--commitsfile" "$COMMITS_FILE")
             fi
             
             if [ "$CREATE_COMPONENT" = "true" ]; then
@@ -485,8 +487,8 @@ runs:
               get_version_args+=("--date" "$COMMIT_DATE")
             fi
             
-            if [ -n "$COMMITS_BASE64" ]; then
-              get_version_args+=("--commits" "$COMMITS_BASE64")
+            if [ -n "$COMMITS_FILE" ]; then
+              get_version_args+=("--commitsfile" "$COMMITS_FILE")
             fi
             
             if [ "$CREATE_COMPONENT" = "true" ]; then
@@ -741,6 +743,7 @@ runs:
         echo "short_version=$SHORT_VERSION" >> $GITHUB_OUTPUT
         echo "build_start=$BUILD_START" >> $GITHUB_OUTPUT
         echo "commit_list=$COMMITS_BASE64" >> $GITHUB_OUTPUT
+        echo "commit_list_file=$COMMITS_FILE" >> $GITHUB_OUTPUT
         echo "sce_commit=${COMMIT_FOR_METADATA:-$COMMIT}" >> $GITHUB_OUTPUT
         echo "sce_commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
         echo "sce_commit_date=$COMMIT_DATE" >> $GITHUB_OUTPUT

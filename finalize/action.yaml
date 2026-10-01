@@ -39,6 +39,9 @@ inputs:
   commit_list:
     description: "Base64 encoded list of commits (from initialize action)"
     required: false
+  commit_list_file:
+    description: "File containing list base64 encoded list of commits (from initialize action)"
+    required: false
   sce_commit:
     description: "SCE commit hash (from initialize action)"
     required: false
@@ -99,13 +102,16 @@ runs:
       env:
         SCE_COMMIT_MESSAGE: ${{ inputs.sce_commit_message }}
         INPUTS_COMMIT_LIST: ${{inputs.commit_list}}
+        INPUTS_COMMIT_LIST_FILE: ${{inputs.commit_list_file}}
         INPUTS_SCE_COMMIT: ${{inputs.sce_commit}}
         INPUTS_SCE_VCS_URI: ${{inputs.sce_vcs_uri}}
         INPUTS_SCE_COMMIT_DATE: ${{inputs.sce_commit_date}}
         INPUTS_REPO_PATH: ${{inputs.repo_path}}
       run: |
-        # Use commit_list from initialize action if provided
-        if [ ! -z "${INPUTS_COMMIT_LIST}" ]; then
+        # Use commit_list_file or commit_list from initialize action if provided
+        if [ -n "${INPUTS_COMMIT_LIST_FILE}" ] && [ -s "${INPUTS_COMMIT_LIST_FILE}" ]; then
+          echo -n "--commitsfile '${INPUTS_COMMIT_LIST_FILE}' " >> /tmp/reliza/rearm_command
+        elif [ -n "${INPUTS_COMMIT_LIST}" ]; then
           echo -n "--commits ${INPUTS_COMMIT_LIST} " >> /tmp/reliza/rearm_command
         fi
 
