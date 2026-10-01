@@ -69,6 +69,9 @@ outputs:
   commit_list:
     description: "Base64 encoded list of commits for SCE"
     value: ${{ steps.initialize.outputs.commit_list }}
+  commit_list_file:
+    description: "File containing base64 encoded list of commits"
+    value: ${{ steps.initialize.outputs.commit_list_file }}
   sce_commit:
     description: "SCE commit hash"
     value: ${{ steps.initialize.outputs.sce_commit }}

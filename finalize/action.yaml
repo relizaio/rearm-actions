@@ -40,7 +40,7 @@ inputs:
     description: "Base64 encoded list of commits (from initialize action)"
     required: false
   commit_list_file:
-    description: "File containing list base64 encoded list of commits (from initialize action)"
+    description: "File containing base64 encoded list of commits (from initialize action)"
     required: false
   sce_commit:
     description: "SCE commit hash (from initialize action)"
