@@ -4,16 +4,24 @@ branding:
   icon: 'anchor'
   color: 'green'
 inputs:
-  rearm_api_key:
-    description: "ReARM API Key"
-    required: true
   rearm_api_id:
-    description: "ReARM API Key ID"
-    required: true
+    description: "ReARM API Key ID (leave empty with rearm_auth: github-oidc)"
+    required: false
+  rearm_api_key:
+    description: "ReARM API Key (leave empty with rearm_auth: github-oidc)"
+    required: false
   rearm_api_url:
     description: "ReARM API URL"
     required: false
-    default: "https://demo.rearmhq.com"
+    default: 'https://demo.rearmhq.com'
+  rearm_auth:
+    description: "Credential mode passed to the CLI: key (rearm_api_id and rearm_api_key), or github-oidc (the identity token GitHub issues to the job, no secret; the job needs permissions id-token: write and the ReARM organization a trust rule for this repository). Empty picks the mode from the credentials present."
+    required: false
+    default: ""
+  rearm_org:
+    description: "ReARM organization uuid, for github-oidc only when several organizations trust the same repository"
+    required: false
+    default: ""
   repo_path:
     description: "Repository path (relative to workspace root)"
     required: false
@@ -113,8 +121,10 @@ runs:
       shell: bash
       env:
         REARM_API_KEY: ${{ inputs.rearm_api_key }}
-        REARM_APIKEYID: ${{ inputs.rearm_api_id }}
+        REARM_API_ID: ${{ inputs.rearm_api_id }}
         REARM_API_URL: ${{ inputs.rearm_api_url }}
+        REARM_AUTH: ${{ inputs.rearm_auth }}
+        REARM_ORG: ${{ inputs.rearm_org }}
         REPO_PATH: ${{ inputs.repo_path }}
         COMPONENT: ${{ inputs.component }}
         VCS_URI: ${{ github.server_url }}/${{ github.repository }}
@@ -129,7 +139,7 @@ runs:
         set -e
         args=(
           "pullrequest" "upsert"
-          "-i" "$REARM_APIKEYID"
+          "-i" "$REARM_API_ID"
           "-k" "$REARM_API_KEY"
           "-u" "$REARM_API_URL"
           "--identity" "$PR_NUMBER"
@@ -154,8 +164,10 @@ runs:
       shell: bash
       env:
         REARM_API_KEY: ${{ inputs.rearm_api_key }}
-        rearm_api_id: ${{ inputs.rearm_api_id }}
+        REARM_API_ID: ${{ inputs.rearm_api_id }}
         REARM_API_URL: ${{ inputs.rearm_api_url }}
+        REARM_AUTH: ${{ inputs.rearm_auth }}
+        REARM_ORG: ${{ inputs.rearm_org }}
         REPO_PATH: ${{ inputs.repo_path }}
         INPUT_BRANCH: ${{ inputs.branch }}
         INPUT_VERSION: ${{ inputs.version }}
@@ -218,7 +230,7 @@ runs:
           local get_latest_args=(
             "getlatestrelease"
             "-k" "$REARM_API_KEY"
-            "-i" "$rearm_api_id"
+            "-i" "$REARM_API_ID"
             "-u" "$REARM_API_URL"
             "--vcsuri" "$VCS_URI"
             "--repo-path" "$REPO_PATH"
@@ -242,10 +254,13 @@ runs:
             #   * "Component not found for VCS UUID '<uuid>' and repo path '<path>'"
             #     — the VCS URI is registered (sibling job in a monorepo created
             #     it) but no component is mapped to *this* repo path yet
-            # Both mean "there is no prior release for this component" — let the
+            #   * a bare "Component not found" — the same outcome reported without
+            #     the VCS detail, which resolveComponentResolutionFromInput returns
+            #     when the key carries no organization to resolve the VCS URI under
+            # All three mean "there is no prior release for this component" — let the
             # calling fallback set DO_BUILD=true so the create flow in
             # addrelease/getversion can run. Surface every other error.
-            if echo "$latest_output" | grep -qE "VCS repository .* not found|Component not found for VCS"; then
+            if echo "$latest_output" | grep -qE "VCS repository .* not found|Component not found"; then
               echo "No previous release found for this component (first build):" >&2
               echo "$latest_output" >&2
               return 1
@@ -387,7 +402,7 @@ runs:
             add_release_args=(
               "addrelease"
               "-k" "$REARM_API_KEY"
-              "-i" "$rearm_api_id"
+              "-i" "$REARM_API_ID"
               "-u" "$REARM_API_URL"
               "--commit" "$COMMIT_FOR_METADATA"
               "--vcstype" "git"
@@ -455,7 +470,7 @@ runs:
             get_version_args=(
               "getversion"
               "-k" "$REARM_API_KEY"
-              "-i" "$rearm_api_id"
+              "-i" "$REARM_API_ID"
               "-u" "$REARM_API_URL"
               "-b" "$BRANCH"
               "--commit" "$COMMIT_FOR_METADATA"
@@ -723,7 +738,7 @@ runs:
           sync_branches_args=(
             "syncbranches"
             "-k" "$REARM_API_KEY"
-            "-i" "$rearm_api_id"
+            "-i" "$REARM_API_ID"
             "-u" "$REARM_API_URL"
             "--vcsuri" "$VCS_URI"
             "--repo-path" "$REPO_PATH"

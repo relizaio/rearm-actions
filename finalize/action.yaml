@@ -5,20 +5,32 @@ branding:
   color: 'green'
 inputs:
   rearm_api_id:
-    description: "ReARM API Key ID"
-    required: true
+    description: "ReARM API Key ID (leave empty with rearm_auth: github-oidc)"
+    required: false
   rearm_api_key:
-    description: "ReARM API Key"
-    required: true
+    description: "ReARM API Key (leave empty with rearm_auth: github-oidc)"
+    required: false
+  rearm_api_url:
+    description: "ReARM API URL"
+    required: false
+    default: 'https://demo.rearmhq.com'
+  rearm_auth:
+    description: "Credential mode passed to the CLI: key (rearm_api_id and rearm_api_key), or github-oidc (the identity token GitHub issues to the job, no secret; the job needs permissions id-token: write and the ReARM organization a trust rule for this repository). Empty picks the mode from the credentials present."
+    required: false
+    default: ""
+  rearm_org:
+    description: "ReARM organization uuid, for github-oidc only when several organizations trust the same repository"
+    required: false
+    default: ""
   image_full_name:
-    description: "Full name of the Docker image with registry prefix"
-    required: true
+    description: "Full name of the Docker image with registry prefix. Leave empty for a release that ships no deliverable, such as a library whose CI only records a pointer to the source code entry; every --odel* flag is then omitted."
+    required: false
   image_digest:
     description: "SHA 256 digest of the image artifact"
     required: false
   rearm_build_start:
-    description: "Build start time"
-    required: true
+    description: "Deliverable build start time. Only used when image_full_name is set, since it opens the deliverable's build window."
+    required: false
   rearm_short_version:
     description: "Docker and filesystem safe version from ReARM for this release"
     required: true
@@ -28,12 +40,8 @@ inputs:
   rearm_build_lifecycle:
     description: "Build lifecycle - [DRAFT | ASSEMBLED | REJECTED]"
     required: true
-  rearm_api_url:
-    description: "ReARM API URL"
-    required: false
-    default: 'https://demo.rearmhq.com'
   deliverable_type:
-    description: "Type of artifact created by this release [CONTAINER, FILE]"
+    description: "Type of artifact created by this release [CONTAINER, FILE]. Ignored when image_full_name is empty."
     required: false
     default: 'CONTAINER'
   commit_list:
@@ -155,7 +163,34 @@ runs:
         # Use purl from sbom-sign-scan if provided
         purl="${INPUTS_PURL}"
         echo "deliverable purl=$purl"
-
+        has_deliverable=true
+        if [[ -z "${INPUTS_IMAGE_FULL_NAME}" ]]; then
+          # A digest and a deliverable-artifact array both describe a deliverable
+          # that was built, so reaching here with either means the caller lost the
+          # image name rather than that it has nothing to ship. Recording the
+          # release regardless would silently drop them, so fail instead. Both are
+          # reported at once so a misconfigured caller sees every problem per run.
+          orphaned=""
+          if [[ -n "${INPUTS_IMAGE_DIGEST}" ]]; then
+            orphaned="image_digest"
+          fi
+          if [[ -n "${INPUTS_ODELARTSJSON}" && "${INPUTS_ODELARTSJSON}" != "[]" ]]; then
+            if [[ -n "$orphaned" ]]; then
+              orphaned="${orphaned} and odelartsjson"
+            else
+              orphaned="odelartsjson"
+            fi
+          fi
+          if [[ -n "$orphaned" ]]; then
+            echo "ERROR: ${orphaned} supplied without image_full_name." >&2
+            echo "  These describe a deliverable and cannot be recorded without one." >&2
+            echo "  Set image_full_name to the deliverable being released, or drop them to record" >&2
+            echo "  a release that ships nothing." >&2
+            exit 1
+          fi
+          has_deliverable=false
+          echo "image_full_name is empty - recording a release with no deliverable."
+        fi
         # Add scearts if provided and not empty.
         # Double quotes (not single) so the env var actually expands; a
         # double-quoted parameter expansion captures the JSON verbatim and is
@@ -183,25 +218,29 @@ runs:
         rearm_head_sha="$GITHUB_HEAD_SHA"
         echo -n "-b ${rearm_branch_name} -u ${INPUTS_REARM_API_URL} \
           -v \"${INPUTS_REARM_FULL_VERSION}\" " >> /tmp/reliza/rearm_command
-        echo -n "--odelid ${INPUTS_IMAGE_FULL_NAME} " >> /tmp/reliza/rearm_command
-        echo -n "--odelbuildid github${GITHUB_ACTION}${rearm_head_sha} " >> /tmp/reliza/rearm_command
-        echo -n "--odelbuilduri https://github.com/${{github.repository}}/actions/runs/${{github.run_id}} " >> /tmp/reliza/rearm_command
-        if [[ -n "$purl" ]]; then
-          echo -n "--odelidentifiers \"PURL:${purl}\" " >> /tmp/reliza/rearm_command
-        fi
-        echo -n '--odelcimeta "GitHub Actions" ' >> /tmp/reliza/rearm_command
-        echo -n "--odeltype ${INPUTS_DELIVERABLE_TYPE} " >> /tmp/reliza/rearm_command
+        if [[ "$has_deliverable" == "true" ]]; then
+          echo -n "--odelid ${INPUTS_IMAGE_FULL_NAME} " >> /tmp/reliza/rearm_command
+          echo -n "--odelbuildid github${GITHUB_ACTION}${rearm_head_sha} " >> /tmp/reliza/rearm_command
+          echo -n "--odelbuilduri https://github.com/${{github.repository}}/actions/runs/${{github.run_id}} " >> /tmp/reliza/rearm_command
+          if [[ -n "$purl" ]]; then
+            echo -n "--odelidentifiers \"PURL:${purl}\" " >> /tmp/reliza/rearm_command
+          fi
+          echo -n '--odelcimeta "GitHub Actions" ' >> /tmp/reliza/rearm_command
+          echo -n "--odeltype ${INPUTS_DELIVERABLE_TYPE} " >> /tmp/reliza/rearm_command
 
-        if [[ "${INPUTS_IMAGE_DIGEST}" != "" ]]
-        then
-          echo -n "--odeldigests ${INPUTS_IMAGE_DIGEST} " >> /tmp/reliza/rearm_command
+          if [[ "${INPUTS_IMAGE_DIGEST}" != "" ]]
+          then
+            echo -n "--odeldigests ${INPUTS_IMAGE_DIGEST} " >> /tmp/reliza/rearm_command
+          fi
         fi
         if [ ! -z "${INPUTS_COMPONENT}" ]
         then
           echo -n "--component ${INPUTS_COMPONENT} " >> /tmp/reliza/rearm_command
         fi
-        echo -n "--datestart ${INPUTS_REARM_BUILD_START} " >> /tmp/reliza/rearm_command
-        echo -n "--dateend $(date -Iseconds) " >> /tmp/reliza/rearm_command
+        if [[ "$has_deliverable" == "true" ]]; then
+          echo -n "--datestart ${INPUTS_REARM_BUILD_START} " >> /tmp/reliza/rearm_command
+          echo -n "--dateend $(date -Iseconds) " >> /tmp/reliza/rearm_command
+        fi
 
         # Forward PR metadata when running on a `pull_request` event
         # so ReARM upserts the first-class PullRequest entity (keyed
@@ -255,6 +294,8 @@ runs:
         GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         INPUTS_REARM_API_KEY: ${{ inputs.rearm_api_key }}
         INPUTS_REARM_API_ID: ${{ inputs.rearm_api_id }}
+        REARM_AUTH: ${{ inputs.rearm_auth }}
+        REARM_ORG: ${{ inputs.rearm_org }}
     - name: Fail build if rearm status is rejected
       shell: bash
       run: |
