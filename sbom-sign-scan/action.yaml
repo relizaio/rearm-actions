@@ -157,7 +157,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        CDXGEN_VERSION="v13.2.0"
+        CDXGEN_VERSION="v13.6.0"
         case "$(uname -m)" in
           x86_64)
             CDXGEN_ARCH="amd64"
@@ -193,7 +193,7 @@ runs:
         INPUTS_IMAGE_DIGEST: ${{inputs.image_digest}}
     - name: Initialize CodeQL
       if: ${{ inputs.enable_codeql == 'true' && inputs.codeql_language != 'custom'}}
-      uses: github/codeql-action/init@c43362b91a940600cde2ebae39ec7a35ad66bdc0 # CodeQL Bundle v2.23.8
+      uses: github/codeql-action/init@52cf1852265d99e9bea071b03366fc777a602909 # CodeQL Bundle v2.27.4
       with:
         languages: ${{ inputs.codeql_language }}
         source-root: ${{ inputs.repo_path }}
@@ -456,7 +456,7 @@ runs:
         then
           export FETCH_LICENSE=false
           python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install blint==3.4.0
+          "$RUNNER_TEMP/venv/bin/pip" install blint==4.0.1
           cdxgen docker-${INPUTS_REARM_SHORT_VERSION}.tar -t docker --lifecycle build --project-version "${INPUTS_REARM_FULL_VERSION}" --spec-version 1.6 -o docker.cdx.bom.raw.json
           du -h ./docker.cdx.bom.raw.json
           rearm bomutils fixpurl -f ./docker.cdx.bom.raw.json -o ./docker.cdx.bom.json --newpurl "${purl}"
