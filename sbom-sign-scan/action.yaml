@@ -212,7 +212,7 @@ runs:
         INPUTS_CODEQL_LANGUAGE: ${{inputs.codeql_language}}
     - name: Run CodeQL
       if: ${{ inputs.enable_codeql == 'true' && inputs.codeql_language != 'custom'}}
-      uses: github/codeql-action/analyze@c43362b91a940600cde2ebae39ec7a35ad66bdc0 # CodeQL Bundle v2.23.8
+      uses: github/codeql-action/analyze@52cf1852265d99e9bea071b03366fc777a602909 # CodeQL Bundle v2.27.4
       with:
         upload: false
         output: ${{ inputs.repo_path }}/codeql-results
