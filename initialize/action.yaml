@@ -680,12 +680,20 @@ runs:
             # Requires backend that surfaces `lifecycle` on Version
             # response. Older backends omit the field, RESOLVED_LIFECYCLE
             # stays empty, and we fall through unchanged.
-            case "$RESOLVED_LIFECYCLE" in
-              REJECTED|CANCELLED)
-                echo "::error::ReARM moved release $FULL_VERSION to $RESOLVED_LIFECYCLE during getversion (component policy / trigger). Failing the build."
-                exit 1
-                ;;
-            esac
+            #
+            # Only applies when this getversion call created the release.
+            # For an existing release (e.g. allow_rebuild re-running a
+            # previously REJECTED/CANCELLED build) the lifecycle is left
+            # over from the earlier run, not set by a trigger now, and
+            # addrelease --rebuild accepts any lifecycle.
+            if [ "$RELEASE_ALREADY_EXISTS" != "true" ]; then
+              case "$RESOLVED_LIFECYCLE" in
+                REJECTED|CANCELLED)
+                  echo "::error::ReARM moved release $FULL_VERSION to $RESOLVED_LIFECYCLE during getversion (component policy / trigger). Failing the build."
+                  exit 1
+                  ;;
+              esac
+            fi
 
             # If release already exists, re-check with the obtained version
             if [ "$RELEASE_ALREADY_EXISTS" = "true" ]; then
